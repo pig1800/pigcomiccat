@@ -1,0 +1,12 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="PigComic.App.Views.ContentDialog"
+        Width="520" SizeToContent="Height" WindowStartupLocation="CenterOwner">
+    <StackPanel Margin="16" Spacing="12">
+        <TextBlock x:Name="MessageText" TextWrapping="Wrap"/>
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
+            <Button x:Name="CancelButton" Content="Cancel" Click="OnCancelClick" IsCancel="True"/>
+            <Button x:Name="OkButton" Content="OK" Click="OnOkClick" IsDefault="True"/>
+        </StackPanel>
+    </StackPanel>
+</Window>

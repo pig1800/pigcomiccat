@@ -1,0 +1,48 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="PigComic.App.Views.CreateProjectDialog"
+        Title="Create project" Width="520" SizeToContent="Height"
+        WindowStartupLocation="CenterOwner">
+    <StackPanel Margin="16" Spacing="10">
+        <StackPanel Spacing="4">
+            <TextBlock Text="Title *"/>
+            <TextBox x:Name="TitleBox" TextChanged="OnFieldChanged"/>
+        </StackPanel>
+        <StackPanel Spacing="4">
+            <TextBlock Text="Folder * (must be empty or nonexistent; created if missing)"/>
+            <Grid ColumnDefinitions="*,Auto" Margin="0,4,0,0">
+                <TextBox x:Name="FolderBox" Grid.Column="0" TextChanged="OnFieldChanged"/>
+                <Button Grid.Column="1" Content="Browse…" Margin="6,0,0,0" Click="OnBrowseClick"/>
+            </Grid>
+        </StackPanel>
+        <Grid ColumnDefinitions="*,*">
+            <StackPanel Grid.Column="0" Spacing="4" Margin="0,0,5,0">
+                <TextBlock Text="Source language"/>
+                <ComboBox x:Name="SourceCombo" SelectedIndex="0">
+                    <ComboBoxItem Content="ja"/>
+                    <ComboBoxItem Content="zh-Hans"/>
+                    <ComboBoxItem Content="zh-Hant"/>
+                    <ComboBoxItem Content="ko"/>
+                    <ComboBoxItem Content="en"/>
+                    <ComboBoxItem Content="(free text)"/>
+                </ComboBox>
+            </StackPanel>
+            <StackPanel Grid.Column="1" Spacing="4" Margin="5,0,0,0">
+                <TextBlock Text="Target language"/>
+                <ComboBox x:Name="TargetCombo" SelectedIndex="0">
+                    <ComboBoxItem Content="zh-Hant"/>
+                    <ComboBoxItem Content="ja"/>
+                    <ComboBoxItem Content="zh-Hans"/>
+                    <ComboBoxItem Content="ko"/>
+                    <ComboBoxItem Content="en"/>
+                    <ComboBoxItem Content="(free text)"/>
+                </ComboBox>
+            </StackPanel>
+        </Grid>
+        <TextBlock x:Name="ErrorText" Foreground="Red" TextWrapping="Wrap"/>
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
+            <Button Content="Cancel" Click="OnCancelClick" IsCancel="True"/>
+            <Button x:Name="OkButton" Content="Create" IsDefault="True" Click="OnOkClick" IsEnabled="False"/>
+        </StackPanel>
+    </StackPanel>
+</Window>

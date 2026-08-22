@@ -1,0 +1,35 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="PigComic.App.Views.ProjectView"
+        Title="Project" Width="960" Height="640">
+    <DockPanel>
+        <DockPanel DockPanel.Dock="Top" Margin="12">
+            <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right">
+                <Button x:Name="AddChapterButton" Content="Add chapter…" Click="OnAddChapterClick"/>
+                <Button x:Name="OpenChapterButton" Content="Open chapter" Click="OnOpenChapterClick"/>
+                <Button x:Name="RemoveChapterButton" Content="Remove from project" Click="OnRemoveChapterClick"/>
+                <Button x:Name="MoveUpButton" Content="▲" Click="OnMoveUpClick"/>
+                <Button x:Name="MoveDownButton" Content="▼" Click="OnMoveDownClick"/>
+                <Button x:Name="StatsButton" Content="Statistics" IsEnabled="False"/>
+                <Button x:Name="CharactersButton" Content="Master characters" IsEnabled="False"/>
+                <Button x:Name="ExchangeButton" Content="TM/TB exchange…"/>
+            </StackPanel>
+        </DockPanel>
+
+        <Border Margin="12" CornerRadius="6" Background="#0FFFFFFF" Padding="6">
+            <ListBox x:Name="ChapterList">
+                <ListBox.ItemTemplate>
+                    <DataTemplate>
+                        <Grid ColumnDefinitions="3*,*,2*,*" MinHeight="28">
+                            <TextBlock Grid.Column="0" Text="{Binding FileName}" VerticalAlignment="Center"/>
+                            <TextBlock Grid.Column="1" Text="{Binding ChapterNumber}" VerticalAlignment="Center"/>
+                            <TextBlock Grid.Column="2" Text="{Binding MetaTitle}" VerticalAlignment="Center" Foreground="Gray"/>
+                            <TextBlock Grid.Column="3" Text="{Binding ExistsText}" VerticalAlignment="Center"
+                                       Foreground="{Binding ExistsBrush}"/>
+                        </Grid>
+                    </DataTemplate>
+                </ListBox.ItemTemplate>
+            </ListBox>
+        </Border>
+    </DockPanel>
+</Window>
