@@ -1,0 +1,22 @@
+# Visual Studio template: https://github.com/github/gitignore/blob/main/VisualStudio.gitignore
+## .NET
+bin/
+obj/
+*.user
+*.suo
+.vs/
+*.userprefs
+TestResults/
+*.coverage
+*.coveragexml
+artifacts/
+
+# Rider
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# User-specific
+*.user

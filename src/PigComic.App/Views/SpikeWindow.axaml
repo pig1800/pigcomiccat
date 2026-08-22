@@ -1,0 +1,24 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:controls="using:PigComic.App.Controls"
+        x:Class="PigComic.App.Views.SpikeWindow"
+        Title="PigComic — Tiled rendering spike (M2)"
+        Width="1000" Height="760">
+    <DockPanel>
+        <!-- M2.2 generator: produces strip.jpg / strip.png beside the app -->
+        <DockPanel DockPanel.Dock="Top">
+            <TextBlock Text="Strip path:" VerticalAlignment="Center"/>
+            <TextBox x:Name="PathBox" Text="strip.jpg" MinWidth="300" DockPanel.Dock="Left"/>
+            <Button x:Name="LoadButton" Content="Load" Click="OnLoadClick" IsEnabled="False" Margin="6,0,0,0"/>
+            <Button x:Name="GenerateButton" Content="Generate strip (+)" Margin="6,0,0,0" Click="OnGenerateClick"/>
+            <Button x:Name="FitButton" Content="Fit width" Margin="6,0,0,0" Click="OnFitClick"/>
+            <Button x:Name="ZoomInButton" Content="Ctrl++" Margin="6,0,0,0" Click="OnZoomInClick"/>
+            <Button x:Name="ZoomOutButton" Content="Ctrl+-" Margin="6,0,0,0" Click="OnZoomOutClick"/>
+        </DockPanel>
+        <DockPanel DockPanel.Dock="Bottom">
+            <TextBlock x:Name="Hints" Text="Wheel: scroll · Ctrl+wheel: zoom at cursor · Ctrl+0: fit width"
+                       Margin="6,2"/>
+        </DockPanel>
+        <controls:TiledImageControl x:Name="TiledView"/>
+    </DockPanel>
+</Window>

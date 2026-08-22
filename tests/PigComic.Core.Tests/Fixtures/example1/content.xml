@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="utf-8"?>
+<pcml version="1">
+  <meta>
+    <title>勇者ピッグ</title>
+    <chapter>012</chapter>
+    <sourceLanguage>ja</sourceLanguage>
+    <targetLanguage>zh-Hant</targetLanguage>
+  </meta>
+  <characters>
+    <character name="ピッグ"/>
+    <character name="魔王"/>
+  </characters>
+  <pages>
+    <page id="p0001" file="0001.jpg" width="1080" height="41250"/>
+    <page id="p0002" file="0002.png" width="1080" height="38200"/>
+  </pages>
+  <bubbles>
+    <bubble id="p0001-b0001" page="p0001" order="1" kind="Speech" character="ピッグ" status="Translated">
+      <region x="612" y="480" width="240" height="310"/>
+      <source>おはよう　ございます！</source>
+      <target>
+        <part index="1">
+          <region x="612" y="480" width="240" height="310"/>
+          <text>早安！</text>
+        </part>
+      </target>
+    </bubble>
+    <bubble id="p0001-b0002" page="p0001" order="2" kind="Thought" status="Draft">
+      <region x="120" y="900" width="300" height="280"/>
+      <source>まさか…魔王が１００人も？</source>
+      <target>
+        <part index="1">
+          <region x="120" y="900" width="300" height="130"/>
+          <text>難道說…</text>
+        </part>
+        <part index="2">
+          <region x="120" y="1050" width="300" height="130"/>
+          <text>魔王竟有100人？</text>
+        </part>
+      </target>
+      <notes>確認：100人 or 100隻</notes>
+      <llmComment>「まさか」の驚きがやや弱い。語気詞の追加を検討。</llmComment>
+    </bubble>
+    <bubble id="p0002-b0001" page="p0002" order="1" kind="Sfx" status="Untranslated">
+      <region x="0" y="200" width="400" height="600"/>
+      <source>ドドド</source>
+      <target>
+        <part index="1">
+          <region x="0" y="200" width="400" height="600"/>
+          <text></text>
+        </part>
+      </target>
+    </bubble>
+  </bubbles>
+</pcml>

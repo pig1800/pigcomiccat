@@ -1,0 +1,18 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:PigComic.App.ViewModels"
+        x:Class="PigComic.App.Views.MainWindow"
+        Title="PigComic" Width="1000" Height="700">
+    <DockPanel>
+        <Menu DockPanel.Dock="Top">
+            <MenuItem Header="Debug (M2 only)">
+                <MenuItem Header="Spike: tiled canvas" Click="OnSpikeClick"/>
+                <MenuItem Header="IME gate test" Click="OnImeClick"/>
+            </MenuItem>
+        </Menu>
+        <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="8">
+            <TextBlock Text="PigComic" FontSize="24" HorizontalAlignment="Center"/>
+            <TextBlock Text="Comic / manga translation CAT tool" HorizontalAlignment="Center"/>
+        </StackPanel>
+    </DockPanel>
+</Window>

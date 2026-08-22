@@ -1,0 +1,35 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:controls="using:PigComic.App.Controls"
+        x:Class="PigComic.App.Views.ImeTestWindow"
+        Title="PigComic — IME gate (M2.5)"
+        Width="900" Height="640">
+    <DockPanel>
+        <DockPanel DockPanel.Dock="Top">
+            <TextBlock Text="IME test: the guard below is the exact handler the target editor will use in M5."
+                       Margin="8,6" FontStyle="Italic"/>
+        </DockPanel>
+
+        <Grid ColumnDefinitions="*,*" Margin="8">
+            <StackPanel Grid.Column="0" Spacing="6">
+                <TextBlock Text="Single-line editor (composition Enter guard active)" FontWeight="SemiBold"/>
+                <controls:PartTextEditor x:Name="Single" Text="日本語テスト" Height="34" MultiLine="False"/>
+                <TextBlock Text="Multi-line target editor simulation (Enter = confirm, Shift+Enter = newline)" FontWeight="SemiBold" Margin="0,12,0,0"/>
+                <controls:PartTextEditor x:Name="Multi" Height="140" MultiLine="True"/>
+                <TextBlock x:Name="Log" TextWrapping="Wrap"/>
+            </StackPanel>
+
+            <StackPanel Grid.Column="1" Spacing="4" Margin="12,0,0,0">
+                <TextBlock Text="SPEC §21 checklist — tick after verifying with JA (MS IME) and KO input" FontWeight="SemiBold"/>
+                <CheckBox Content="1. JA: romaji → hiragana at the caret; Space shows candidates; Enter commits; no dropped chars" x:Name="Check1"/>
+                <CheckBox Content="2. JA: composition inside existing text inserts correctly" x:Name="Check2"/>
+                <CheckBox Content="3. KO: 2-beolsik jamo assembles in place; commit/backspace like Notepad" x:Name="Check3"/>
+                <CheckBox Content="4. Shift+Enter during composition does not break composition state; Enter during
+                               composition never confirms (watch log below)" x:Name="Check4"/>
+                <CheckBox Content="5. IME on/off toggling works while the control is focused" x:Name="Check5"/>
+                <TextBlock Text="Confirm log:" FontWeight="SemiBold" Margin="0,12,0,0"/>
+                <TextBlock x:Name="ConfirmLog" TextWrapping="Wrap"/>
+            </StackPanel>
+        </Grid>
+    </DockPanel>
+</Window>
