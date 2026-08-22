@@ -1,0 +1,153 @@
+<ResourceDictionary xmlns="https://github.com/avaloniaui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:ime="using:PigComic.App.Ime"
+                    xmlns:controls="using:PigComic.App.Controls">
+
+  <!--
+    PartTextEditor theme. Identical structure to the Fluent TextBox template, but the
+    PART_TextPresenter is the clause-aware ImeTextPresenter so the IME preedit renders
+    the in-composition caret and the active henkan clause highlight (SPEC §21, D-40).
+    All bindings match the stock template so behavior is unchanged apart from rendering.
+  -->
+  <ControlTheme x:Key="PartTextEditorTheme" TargetType="controls:PartTextEditor">
+    <Setter Property="Foreground" Value="{DynamicResource TextControlForeground}" />
+    <Setter Property="Background" Value="{DynamicResource TextControlBackground}" />
+    <Setter Property="CaretBrush" Value="{DynamicResource TextControlForeground}" />
+    <Setter Property="BorderBrush" Value="{DynamicResource TextControlBorderBrush}" />
+    <Setter Property="SelectionBrush" Value="{DynamicResource TextControlSelectionHighlightColor}" />
+    <Setter Property="BorderThickness" Value="{DynamicResource TextControlBorderThemeThickness}" />
+    <Setter Property="CornerRadius" Value="{DynamicResource ControlCornerRadius}" />
+    <Setter Property="MinHeight" Value="{DynamicResource TextControlThemeMinHeight}" />
+    <Setter Property="MinWidth" Value="{DynamicResource TextControlThemeMinWidth}" />
+    <Setter Property="Padding" Value="{DynamicResource TextControlThemePadding}" />
+    <Setter Property="FocusAdorner" Value="{x:Null}" />
+    <Setter Property="ScrollViewer.IsScrollChainingEnabled" Value="True" />
+    <Setter Property="Template">
+      <ControlTemplate>
+        <DataValidationErrors>
+          <Panel>
+            <Border Name="PART_BorderElement"
+                    Background="{TemplateBinding Background}"
+                    BorderBrush="{TemplateBinding BorderBrush}"
+                    BorderThickness="{TemplateBinding BorderThickness}"
+                    CornerRadius="{TemplateBinding CornerRadius}"
+                    MinWidth="{TemplateBinding MinWidth}"
+                    MinHeight="{TemplateBinding MinHeight}" />
+
+            <Border Margin="{TemplateBinding BorderThickness}">
+              <Grid ColumnDefinitions="Auto,*,Auto">
+                <ContentPresenter Grid.Column="0"
+                                  VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}"
+                                  Content="{TemplateBinding InnerLeftContent}" />
+                <DockPanel Name="PART_InnerDockPanel"
+                           Grid.Column="1"
+                           Margin="{TemplateBinding Padding}">
+                  <TextBlock Name="PART_FloatingWatermark"
+                             Foreground="{DynamicResource SystemAccentColor}"
+                             IsVisible="False"
+                             Text="{TemplateBinding Watermark}"
+                             DockPanel.Dock="Top" />
+                  <ScrollViewer Name="PART_ScrollViewer"
+                                HorizontalScrollBarVisibility="{TemplateBinding (ScrollViewer.HorizontalScrollBarVisibility)}"
+                                VerticalScrollBarVisibility="{TemplateBinding (ScrollViewer.VerticalScrollBarVisibility)}"
+                                IsScrollChainingEnabled="{TemplateBinding (ScrollViewer.IsScrollChainingEnabled)}"
+                                AllowAutoHide="{TemplateBinding (ScrollViewer.AllowAutoHide)}"
+                                BringIntoViewOnFocusChange="{TemplateBinding (ScrollViewer.BringIntoViewOnFocusChange)}">
+                    <Panel>
+                      <TextBlock Name="PART_Watermark"
+                                 Opacity="0.5"
+                                 Text="{TemplateBinding Watermark}"
+                                 TextAlignment="{TemplateBinding TextAlignment}"
+                                 TextWrapping="{TemplateBinding TextWrapping}"
+                                 HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                 VerticalAlignment="{TemplateBinding VerticalContentAlignment}">
+                        <TextBlock.IsVisible>
+                          <MultiBinding Converter="{x:Static BoolConverters.And}">
+                            <Binding ElementName="PART_TextPresenter" Path="PreeditText" Converter="{x:Static StringConverters.IsNullOrEmpty}" />
+                            <Binding RelativeSource="{RelativeSource TemplatedParent}" Path="Text" Converter="{x:Static StringConverters.IsNullOrEmpty}" />
+                          </MultiBinding>
+                        </TextBlock.IsVisible>
+                      </TextBlock>
+                      <ime:ImeTextPresenter Name="PART_TextPresenter"
+                                    Text="{TemplateBinding Text, Mode=TwoWay}"
+                                    CaretBlinkInterval="{TemplateBinding CaretBlinkInterval}"
+                                    CaretIndex="{TemplateBinding CaretIndex}"
+                                    SelectionStart="{TemplateBinding SelectionStart}"
+                                    SelectionEnd="{TemplateBinding SelectionEnd}"
+                                    TextAlignment="{TemplateBinding TextAlignment}"
+                                    TextWrapping="{TemplateBinding TextWrapping}"
+                                    LineHeight="{TemplateBinding LineHeight}"
+                                    LetterSpacing="{TemplateBinding LetterSpacing}"
+                                    PasswordChar="{TemplateBinding PasswordChar}"
+                                    RevealPassword="{TemplateBinding RevealPassword}"
+                                    SelectionBrush="{TemplateBinding SelectionBrush}"
+                                    SelectionForegroundBrush="{TemplateBinding SelectionForegroundBrush}"
+                                    CaretBrush="{TemplateBinding CaretBrush}"
+                                    ActiveClauseBackground="{DynamicResource SystemAccentColor}"
+                                    HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                    VerticalAlignment="{TemplateBinding VerticalContentAlignment}" />
+                    </Panel>
+                    <ScrollViewer.Styles>
+                      <Style Selector="ScrollContentPresenter#PART_ContentPresenter">
+                        <Setter Property="Cursor" Value="IBeam" />
+                      </Style>
+                    </ScrollViewer.Styles>
+                  </ScrollViewer>
+                </DockPanel>
+                <ContentPresenter Grid.Column="2"
+                                  VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}"
+                                  Content="{TemplateBinding InnerRightContent}" />
+              </Grid>
+            </Border>
+          </Panel>
+        </DataValidationErrors>
+      </ControlTemplate>
+    </Setter>
+
+    <Style Selector="^:disabled">
+      <Setter Property="Foreground" Value="{DynamicResource TextControlForegroundDisabled}" />
+      <Style Selector="^ /template/ Border#PART_BorderElement">
+        <Setter Property="Background" Value="{DynamicResource TextControlBackgroundDisabled}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource TextControlBorderBrushDisabled}" />
+      </Style>
+      <Style Selector="^ /template/ TextBlock#PART_Watermark, ^ /template/ TextBlock#PART_FloatingWatermark">
+        <Setter Property="Foreground" Value="{DynamicResource TextControlPlaceholderForegroundDisabled}" />
+      </Style>
+    </Style>
+
+    <Style Selector="^:pointerover">
+      <Setter Property="Foreground" Value="{DynamicResource TextControlForegroundPointerOver}" />
+      <Style Selector="^ /template/ Border#PART_BorderElement">
+        <Setter Property="BorderBrush" Value="{DynamicResource TextControlBorderBrushPointerOver}" />
+        <Setter Property="Background" Value="{DynamicResource TextControlBackgroundPointerOver}" />
+      </Style>
+      <Style Selector="^ /template/ TextBlock#PART_Watermark">
+        <Setter Property="Foreground" Value="{DynamicResource TextControlPlaceholderForegroundPointerOver}" />
+      </Style>
+    </Style>
+
+    <Style Selector="^:focus">
+      <Setter Property="Foreground" Value="{DynamicResource TextControlForegroundFocused}" />
+      <Style Selector="^ /template/ TextBlock#PART_Watermark">
+        <Setter Property="Foreground" Value="{DynamicResource TextControlPlaceholderForegroundFocused}" />
+      </Style>
+      <Style Selector="^ /template/ Border#PART_BorderElement">
+        <Setter Property="Background" Value="{DynamicResource TextControlBackgroundFocused}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource TextControlBorderBrushFocused}" />
+        <Setter Property="BorderThickness" Value="{DynamicResource TextControlBorderThemeThicknessFocused}" />
+      </Style>
+    </Style>
+
+    <Style Selector="^:error /template/ Border#PART_BorderElement">
+      <Setter Property="BorderBrush" Value="{DynamicResource SystemControlErrorTextForegroundBrush}" />
+    </Style>
+
+    <Style Selector="^ /template/ TextBlock#PART_FloatingWatermark">
+      <Setter Property="Cursor" Value="IBeam" />
+    </Style>
+
+    <Style Selector="^[UseFloatingWatermark=true]:not(:empty) /template/ TextBlock#PART_FloatingWatermark">
+      <Setter Property="IsVisible" Value="True" />
+    </Style>
+  </ControlTheme>
+</ResourceDictionary>

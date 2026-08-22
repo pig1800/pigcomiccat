@@ -1,17 +1,18 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:controls="using:PigComic.App.Controls"
         x:Class="PigComic.App.Views.CreateProjectDialog"
         Title="Create project" Width="520" SizeToContent="Height"
         WindowStartupLocation="CenterOwner">
     <StackPanel Margin="16" Spacing="10">
         <StackPanel Spacing="4">
             <TextBlock Text="Title *"/>
-            <TextBox x:Name="TitleBox" TextChanged="OnFieldChanged"/>
+            <controls:PartTextEditor x:Name="TitleBox" TextChanged="OnFieldChanged" ConfirmOnEnter="False"/>
         </StackPanel>
         <StackPanel Spacing="4">
             <TextBlock Text="Folder * (must be empty or nonexistent; created if missing)"/>
             <Grid ColumnDefinitions="*,Auto" Margin="0,4,0,0">
-                <TextBox x:Name="FolderBox" Grid.Column="0" TextChanged="OnFieldChanged"/>
+                <controls:PartTextEditor x:Name="FolderBox" Grid.Column="0" TextChanged="OnFieldChanged" ConfirmOnEnter="False"/>
                 <Button Grid.Column="1" Content="Browse…" Margin="6,0,0,0" Click="OnBrowseClick"/>
             </Grid>
         </StackPanel>

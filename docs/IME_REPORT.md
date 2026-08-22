@@ -42,27 +42,34 @@ must remain at 0 while composing.
 
 ## Composition-rendering defect (recorded 2026-08-23, owner-reported)
 
-**Symptom.** In `PartTextEditor` the JA IME did not show the current caret or the
-henkan-ing word; ZH IME did not show the caret while editing Pinyin; KO appeared
-fine only because 2-beolsik jamo composes a single glyph at the caret.
+**Symptom.** In `PartTextEditor` — and confirmed reproducible in a plain left-aligned
+`TextBox` (the New Project title field) — the JA IME did not show the current caret or
+the henkan-ing word, and the ZH IME did not show the caret while editing Pinyin. KO
+appeared fine only because 2-beolsik jamo composes a single glyph at the caret with the
+cursor always at the end, masking the defect.
 
-**Root cause.** `PartTextEditor` set `TextAlignment.Center` (and vertical center).
-Avalonia 11.2.5's IME client renders the live composition by setting
-`TextPresenter.PreeditText`/`PreeditTextCursorPosition`; the presenter inserts the
-preedit at the caret into a combined layout (`GetCombinedText`) and moves the caret
-to `CaretIndex + preeditCursorPos`. The caret geometry (`UpdateCaret` →
-`GetDistanceFromCharacterHit`) is computed in the raw **left-origin** inline space,
-but `RenderInternal` draws the combined text through `TextLayout.Draw`, which
-applies `TextAlignment`. With `Center`, the composition is drawn at the centered
-offset while the caret is drawn at the left-flow coordinate → the two separate and
-the in-composition caret is lost (henkan word / Pinyin cursor invisible).
+**Root cause (corrected).** The earlier alignment hypothesis was wrong. The real cause is
+that Avalonia 11.x's Win32 **IMM32** path (`Imm32InputMethod.HandleComposition`) reads only
+`GCS_COMPSTR` and calls `Client.SetPreeditText(composition)` with **no caret position and no
+conversion-clause data** — it never forwards `GCS_CURSORPOS`, `GCS_COMPCLAUSE`, or
+`GCS_COMPATTR`. (Verified in both 11.2.5 and the latest 11.3.20; the cursor-position fix
+PR #21632 and the clause-highlight PRs #21647/#21648 exist only on unreleased `master`.)
+Consequence: the in-composition caret defaults to end-of-string (ZH Pinyin caret lost) and
+no active-segment highlight can be drawn (JA henkan word not shown).
 
-**Fix.** `PartTextEditor` no longer centers text during editing: it keeps
-`TextAlignment.Left` and top/left content alignment while focused/composing, so the
-native preedit pipeline renders the composition and its caret at the same position.
-No custom `TextInputMethodClient` is used (per §21 the built-in client is correct
-once alignment is left). The candidate-window `CursorRectangle` derives from the
-same `_caretBounds`, so this also corrects candidate placement. **Item 6** above
-validates this fix manually.
+**Fix (SPEC §21 escalation, D-40).** A custom `TextInputMethodClient`
+(`Ime/ImeTextBoxInputMethodClient`) that on `SetPreeditText` queries the focused HWND's IMM
+context directly (`ImmGetCompositionString` with `GCS_CURSORPOS` / `GCS_COMPCLAUSE` /
+`GCS_COMPATTR`) and feeds a clause-aware `Ime/ImeTextPresenter`:
+- the in-composition caret is placed from GCS_CURSORPOS (fixes ZH Pinyin caret);
+- the active henkan clause (ATTR_TARGET_CONVERTED / _NOTCONVERTED) is highlighted
+  reverse-video, other clauses underlined (fixes JA henkan highlight);
+- KO / no-clause IMEs degrade to the base flat-underline rendering;
+- the committed document text is never mutated by composition.
+
+`PartTextEditor` installs this client on the Tunnel route (handledEventsToo, marks Handled)
+so the base TextBox bubble class-handler is skipped, and uses `Ime/PartTextEditorTheme.axaml`
+whose `PART_TextPresenter` is an `ImeTextPresenter`. **Items 1–6** above are run against this
+build.
 
 *Owner: replace ⬜ with ✅ PASS / ❌ FAIL and update Version/Result below when run.*

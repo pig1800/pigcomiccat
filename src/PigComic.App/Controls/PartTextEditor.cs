@@ -1,6 +1,12 @@
+using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.Presenters;
 using Avalonia.Input;
+using Avalonia.Input.TextInput;
+using Avalonia.Interactivity;
 using Avalonia.Media;
+using Avalonia.Styling;
+using Avalonia.VisualTree;
 
 namespace PigComic.App.Controls;
 
@@ -24,36 +30,36 @@ namespace PigComic.App.Controls;
 /// exposed so the checklist can detect a leaking path.
 /// </summary>
 /// <remarks>
-/// <para><b>IME rendering (SPEC §21 escalation — JA henkan word + ZH Pinyin
-/// cursor).</b> The built-in <see cref="TextBox"/> IME client
-/// (TextBoxTextInputMethodClient) renders the live composition inline by
-/// setting TextPresenter.PreeditText / PreeditTextCursorPosition; the presenter
-/// inserts the preedit string at the caret into a combined layout, underlines
-/// it, and moves the caret to CaretIndex + preeditCursorPos.</para>
-/// <para>That pipeline is correct ONLY for left-aligned (top) layout. The
-/// presenter's caret geometry (<c>UpdateCaret</c> →
-/// <c>GetDistanceFromCharacterHit</c>) is computed in the raw, left-origin
-/// inline coordinate space, while <c>RenderInternal</c> draws the combined text
-/// through <c>TextLayout.Draw</c>, which applies <see cref="TextAlignment"/>.
-/// With <c>TextAlignment.Center</c> the composition is drawn at the centered
-/// offset but the caret is drawn at the left-flow coordinate, so the caret and
-/// the henkan/Pinyin word separate and the in-composition cursor disappears
-/// (JA: current word + cursor lost; ZH: Pinyin cursor lost). KO jamo composes a
-/// single glyph at the caret so the offset is negligible — which is why KO
-/// "seems to work".</para>
-/// <para>Therefore this editor must keep <see cref="TextAlignment.Left"/> and
-/// <see cref="Avalonia.Layout.VerticalAlignment.Top"/> while focused/composing.
-/// The centered look is purely cosmetic; correctness of the composition caret
-/// takes priority, so centering is not used here at all (D-39).</para>
+/// <para><b>IME rendering (SPEC §21 escalation, D-40).</b> This editor installs a
+/// clause-aware IME client (<see cref="Ime.ImeTextBoxInputMethodClient"/>) and a
+/// clause-aware presenter (<see cref="Ime.ImeTextPresenter"/>, via the
+/// <c>PartTextEditorTheme</c>) because Avalonia 11.x's Win32 IMM32 path forwards only
+/// the raw composition string — never the in-composition caret (GCS_CURSORPOS) or the
+/// conversion-clause data (GCS_COMPCLAUSE/COMPATTR). Without those, the ZH Pinyin
+/// caret and the JA henkan-segment highlight cannot render. The custom client queries
+/// the focused window's IMM context for that data on each composition update and never
+/// mutates the committed document text.</para>
+/// <para>Text stays left-aligned (<see cref="TextAlignment.Left"/>) and the multi-line
+/// editor is top-aligned so the composition caret stays in-flow; centering is cosmetic
+/// and not used here.</para>
 /// </remarks>
 public class PartTextEditor : TextBox
 {
     private bool _multiLine;
+    private readonly Ime.ImeTextBoxInputMethodClient _imClient = new();
+    private TextPresenter? _presenter;
 
     public event EventHandler? ConfirmRequested;
 
     /// <summary>Checklist instrumentation: every confirm fired while composing would show here.</summary>
     public long ConfirmCount { get; private set; }
+
+    /// <summary>
+    /// When true (default), Enter fires <see cref="ConfirmRequested"/> and is marked handled
+    /// (SPEC §21 item 4 guard for the part editor). Set false in contexts where Enter must
+    /// fall through to a default button (e.g., dialogs).
+    /// </summary>
+    public bool ConfirmOnEnter { get; set; } = true;
 
     public bool MultiLine
     {
@@ -81,6 +87,56 @@ public class PartTextEditor : TextBox
         VerticalContentAlignment = _multiLine
             ? Avalonia.Layout.VerticalAlignment.Top
             : Avalonia.Layout.VerticalAlignment.Center;
+
+        // Use the clause-aware theme (PART_TextPresenter = ImeTextPresenter) when available.
+        if (Application.Current?.TryFindResource("PartTextEditorTheme", out var theme) == true)
+        {
+            Theme = theme as ControlTheme;
+        }
+
+        // Install the clause-aware IME client on the TUNNEL route and mark handled so the
+        // base TextBox bubble class-handler (which sets its plain client) is skipped.
+        AddHandler(
+            InputElement.TextInputMethodClientRequestedEvent,
+            OnImeClientRequested,
+            RoutingStrategies.Tunnel,
+            handledEventsToo: true);
+    }
+
+    private void OnImeClientRequested(object? sender, TextInputMethodClientRequestedEventArgs e)
+    {
+        if (!IsReadOnly)
+        {
+            e.Client = _imClient;
+            e.Handled = true;
+        }
+    }
+
+    protected override void OnApplyTemplate(Avalonia.Controls.Primitives.TemplateAppliedEventArgs e)
+    {
+        base.OnApplyTemplate(e);
+
+        _presenter = e.NameScope.Get<TextPresenter>("PART_TextPresenter");
+        _imClient.SetPresenter(_presenter, this);
+        if (IsFocused)
+        {
+            _presenter.ShowCaret();
+        }
+    }
+
+    protected override void OnGotFocus(GotFocusEventArgs e)
+    {
+        base.OnGotFocus(e);
+        if (_presenter is not null)
+        {
+            _imClient.SetPresenter(_presenter, this);
+        }
+    }
+
+    protected override void OnLostFocus(RoutedEventArgs e)
+    {
+        base.OnLostFocus(e);
+        _imClient.SetPresenter(null, null);
     }
 
     protected override void OnKeyDown(KeyEventArgs e)
@@ -91,6 +147,13 @@ public class PartTextEditor : TextBox
             {
                 base.OnKeyDown(e);
                 e.Handled = true;
+                return;
+            }
+
+            // Dialog mode: leave Enter unhandled so an IsDefault button still fires.
+            if (!ConfirmOnEnter)
+            {
+                base.OnKeyDown(e);
                 return;
             }
 
