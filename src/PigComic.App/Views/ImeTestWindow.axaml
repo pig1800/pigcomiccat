@@ -16,7 +16,11 @@
                 <controls:PartTextEditor x:Name="Single" Text="日本語テスト" Height="34" MultiLine="False"/>
                 <TextBlock Text="Multi-line target editor simulation (Enter = confirm, Shift+Enter = newline)" FontWeight="SemiBold" Margin="0,12,0,0"/>
                 <controls:PartTextEditor x:Name="Multi" Height="140" MultiLine="True"/>
-                <TextBlock x:Name="Log" TextWrapping="Wrap"/>
+                <TextBlock Text="Reference: centered TextBox (NOT PartTextEditor) — for comparison only; its preedit caret may misalign."
+                           FontStyle="Italic" Margin="0,12,0,0"/>
+                <TextBox x:Name="CenteredReference" Text="比較用" Height="34" TextAlignment="Center"
+                         VerticalContentAlignment="Center"/>
+                <TextBlock x:Name="Log" TextWrapping="Wrap" Margin="0,8,0,0"/>
             </StackPanel>
 
             <StackPanel Grid.Column="1" Spacing="4" Margin="12,0,0,0">
@@ -27,6 +31,9 @@
                 <CheckBox Content="4. Shift+Enter during composition does not break composition state; Enter during
                                composition never confirms (watch log below)" x:Name="Check4"/>
                 <CheckBox Content="5. IME on/off toggling works while the control is focused" x:Name="Check5"/>
+                <CheckBox Content="6. JA/ZH: the in-composition caret and the henkan word / Pinyin string are drawn
+                               TOGETHER at the caret (underline + caret visible inside the composition). Compare
+                               against the centered reference box on the left." x:Name="Check6"/>
                 <TextBlock Text="Confirm log:" FontWeight="SemiBold" Margin="0,12,0,0"/>
                 <TextBlock x:Name="ConfirmLog" TextWrapping="Wrap"/>
             </StackPanel>
