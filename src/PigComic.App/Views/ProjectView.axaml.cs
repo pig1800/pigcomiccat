@@ -15,6 +15,7 @@ public sealed class ChapterRow
     public string ChapterNumber { get; set; } = "";
     public string MetaTitle { get; set; } = "";
     public string ExistsText { get; set; } = "yes";
+
     public Avalonia.Media.IBrush ExistsBrush
         => ExistsText == "yes" ? Avalonia.Media.Brushes.DarkGreen
            : ExistsText == "unreadable" ? Avalonia.Media.Brushes.DarkOrange
@@ -92,7 +93,7 @@ public partial class ProjectView : Avalonia.Controls.Window
         CharactersButton.IsEnabled = true;
     }
 
-    private void OnAddChapterClick(object? sender, RoutedEventArgs e)
+    private async void OnAddChapterClick(object? sender, RoutedEventArgs e)
     {
         var dialog = new OpenFileDialog
         {
@@ -100,39 +101,40 @@ public partial class ProjectView : Avalonia.Controls.Window
             AllowMultiple = false,
             Filters = { new FileDialogFilter { Name = "PigComic chapter", Extensions = { "pcml" } } },
         };
-        if (dialog.ShowAsync(this).GetAwaiter().GetResult() is { Length: > 0 } picked)
+        var picked = await dialog.ShowAsync(this).ConfigureAwait(true);
+        if (picked is { Length: > 0 })
         {
             _project?.AddChapter(picked[0]);
             SaveProject();
         }
     }
 
-    private void OnRemoveChapterClick(object? sender, RoutedEventArgs e)
+    private async void OnRemoveChapterClick(object? sender, RoutedEventArgs e)
     {
         if (ChapterList.SelectedItem is not ChapterRow row)
         {
             return;
         }
 
-        if (ContentDialog.Ask(this, "Remove chapter from project?",
-                "The .pcml file itself is never deleted.", "Remove", "Cancel") == true)
+        if (await ContentDialog.AskAsync(this, "Remove chapter from project?",
+                "The .pcml file itself is never deleted.", "Remove", "Cancel"))
         {
             _project?.RemoveChapter(row.Path);
             SaveProject();
         }
     }
 
-    private void OnOpenChapterClick(object? sender, RoutedEventArgs e)
+    private async void OnOpenChapterClick(object? sender, RoutedEventArgs e)
     {
         if (ChapterList.SelectedItem is not ChapterRow row)
         {
             return;
         }
 
-        ContentDialog.Ask(this, "Open chapter",
+        await ContentDialog.AskAsync(this, "Open chapter",
             row.ExistsText == "yes"
                 ? $"Would open {row.FileName} — the editor ships in M5."
-                : $"File missing: {row.Path}\nUse the Relink flow when it lands (M4.7).",
+                : $"File missing: {row.Path}\nUse the Relink flow to restore it.",
             "OK", null);
     }
 
@@ -171,39 +173,44 @@ public partial class ProjectView : Avalonia.Controls.Window
         var menu = new Menu();
         var items = new (string Header, Func<Task> Run)[]
         {
-            ("Import TM… (TMX)", () => ImportAsync("TM (TMX)", ".tmx", true, false)),
-            ("Export TM… (TMX)", () => ExportAsync("TM (TMX)", ".tmx", true, false)),
-            ("Import TM… (XLSX)", () => ImportAsync("TM (XLSX)", ".xlsx", true, false)),
-            ("Export TM… (XLSX)", () => ExportAsync("TM (XLSX)", ".xlsx", true, false)),
-            ("Import TB… (TBX)", () => ImportAsync("TB (TBX)", ".tbx", false, true)),
-            ("Export TB… (TBX)", () => ExportAsync("TB (TBX)", ".tbx", false, true)),
-            ("Import TB… (XLSX)", () => ImportAsync("TB (XLSX)", ".xlsx", false, true)),
-            ("Export TB… (XLSX)", () => ExportAsync("TB (XLSX)", ".xlsx", false, true)),
+            ("Import TM… (TMX)", () => ImportAsync("TM (TMX)", ".tmx", true)),
+            ("Export TM… (TMX)", () => ExportAsync("TM (TMX)", ".tmx", true)),
+            ("Import TM… (XLSX)", () => ImportAsync("TM (XLSX)", ".xlsx", true)),
+            ("Export TM… (XLSX)", () => ExportAsync("TM (XLSX)", ".xlsx", true)),
+            ("Import TB… (TBX)", () => ImportAsync("TB (TBX)", ".tbx", false)),
+            ("Export TB… (TBX)", () => ExportAsync("TB (TBX)", ".tbx", false)),
+            ("Import TB… (XLSX)", () => ImportAsync("TB (XLSX)", ".xlsx", false)),
+            ("Export TB… (XLSX)", () => ExportAsync("TB (XLSX)", ".xlsx", false)),
         };
         foreach (var (header, run) in items)
         {
             var item = new MenuItem { Header = header, Tag = run };
-            item.Click += async (_, _) => await ((Func<Task>)item.Tag!)().ConfigureAwait(true);
+            item.Click += async (_, _) => await ((Func<Task>)item.Tag!)();
             menu.Items.Add(item);
         }
 
         menu.Open();
     }
 
-    private async Task ImportAsync(string caption, string ext, bool isTm, bool isTb)
+    private async Task ImportAsync(string caption, string ext, bool isTm)
     {
+        if (_project is null)
+        {
+            return;
+        }
+
         var dialog = new OpenFileDialog
         {
             Title = $"Import {caption}",
             AllowMultiple = false,
             Filters = { new FileDialogFilter { Name = caption, Extensions = { ext.TrimStart('.') } } },
         };
-        if (dialog.ShowAsync(this).GetAwaiter().GetResult() is not { } picked || _project is null || picked.Length == 0)
+        var picked = await dialog.ShowAsync(this).ConfigureAwait(true);
+        if (picked is not { Length: > 0 } selected)
         {
             return;
         }
 
-        var importPath = picked[0];
         var opened = ProjectFolder.OpenStores(_folder, _project.SourceLanguage, _project.TargetLanguage);
         using (opened.Tm)
         using (opened.Tb)
@@ -212,27 +219,33 @@ public partial class ProjectView : Avalonia.Controls.Window
             if (isTm)
             {
                 ITmExchange exchange = ext == ".tmx" ? new TmxExchange() : new TmXlsxExchange();
-                report = await exchange.ImportAsync(importPath, opened.Tm, CancellationToken.None);
+                report = await exchange.ImportAsync(selected[0], opened.Tm, CancellationToken.None);
             }
             else
             {
                 ITbExchange exchange = ext == ".tbx" ? new TbxExchange() : new TbXlsxExchange();
-                report = await exchange.ImportAsync(importPath, opened.Tb, CancellationToken.None);
+                report = await exchange.ImportAsync(selected[0], opened.Tb, CancellationToken.None);
             }
 
-            ContentDialog.Ask(this, $"Import {caption}", ReportText(report), "OK", null);
+            await ContentDialog.AskAsync(this, $"Import {caption}", ReportText(report), "OK", null);
         }
     }
 
-    private async Task ExportAsync(string caption, string ext, bool isTm, bool isTb)
+    private async Task ExportAsync(string caption, string ext, bool isTm)
     {
+        if (_project is null)
+        {
+            return;
+        }
+
         var dialog = new SaveFileDialog
         {
             Title = $"Export {caption}",
             DefaultExtension = ext.TrimStart('.'),
             Filters = { new FileDialogFilter { Name = caption, Extensions = { ext.TrimStart('.') } } },
         };
-        if (dialog.ShowAsync(this).GetAwaiter().GetResult() is not { } exportPath || _project is null)
+        var path = await dialog.ShowAsync(this).ConfigureAwait(true);
+        if (path is null)
         {
             return;
         }
@@ -244,16 +257,16 @@ public partial class ProjectView : Avalonia.Controls.Window
             if (isTm)
             {
                 ITmExchange exchange = ext == ".tmx" ? new TmxExchange() : new TmXlsxExchange();
-                await exchange.ExportAsync(exportPath, opened.Tm, CancellationToken.None);
+                await exchange.ExportAsync(path, opened.Tm, CancellationToken.None);
             }
             else
             {
                 ITbExchange exchange = ext == ".tbx" ? new TbxExchange() : new TbXlsxExchange();
-                await exchange.ExportAsync(exportPath, opened.Tb, CancellationToken.None);
+                await exchange.ExportAsync(path, opened.Tb, CancellationToken.None);
             }
         }
 
-        ContentDialog.Ask(this, $"Export {caption}", "Exported.", "OK", null);
+        await ContentDialog.AskAsync(this, $"Export {caption}", "Exported.", "OK", null);
     }
 
     private static string ReportText(ImportReport report)

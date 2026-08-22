@@ -1,7 +1,5 @@
 namespace PigComic.App.Views;
 
-using Avalonia.Interactivity;
-
 public enum RemoveProjectDialogOutcome
 {
     Cancelled,
@@ -15,7 +13,7 @@ public partial class RemoveProjectDialog : Avalonia.Controls.Window
     private readonly string? _folder;
 
     public RemoveProjectDialogOutcome Outcome { get; private set; } = RemoveProjectDialogOutcome.Cancelled;
-    public bool DeleteFolder { get; private set; }
+    public string? Folder => _folder;
 
     public RemoveProjectDialog(string projectJsonPath, string? folder)
     {
@@ -48,9 +46,7 @@ public partial class RemoveProjectDialog : Avalonia.Controls.Window
         if (DeleteRadio.IsChecked == true && ConfirmDelete.IsChecked == true)
         {
             Outcome = RemoveProjectDialogOutcome.DeleteFolder;
-            DeleteFolder = true;
             Close(true);
         }
     }
 }
-

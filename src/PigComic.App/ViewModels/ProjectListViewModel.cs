@@ -70,9 +70,8 @@ public partial class ProjectListViewModel : ObservableObject
         Reload();
     }
 
-    public void RemoveProject(string projectJsonPath, bool deleteFolder)
+    public void RemoveProject(string projectJsonPath)
     {
-        // Permanent folder deletion happens in the dialog (D-08); registry removal here.
         _registry.Remove(projectJsonPath);
         Reload();
     }

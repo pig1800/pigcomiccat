@@ -70,7 +70,8 @@ public partial class RelinkDialog : Avalonia.Controls.Window
             AllowMultiple = false,
             Filters = { new FileDialogFilter { Name = "PigComic chapter", Extensions = { "pcml" } } },
         };
-        if (dialog.ShowAsync(this).GetAwaiter().GetResult() is { Length: > 0 } picked)
+        var picked = await dialog.ShowAsync(this).ConfigureAwait(true);
+        if (picked is { Length: > 0 })
         {
             row.ResolvedPath = picked[0];
             text.Text = $"{row.FileName}  →  {row.ResolvedPath}";

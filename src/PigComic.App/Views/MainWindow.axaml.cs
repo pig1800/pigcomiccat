@@ -5,115 +5,136 @@ using PigComic.App.ViewModels;
 
 namespace PigComic.App.Views;
 
-public partial class MainWindow : Avalonia.Controls.Window
+public partial class MainWindow : Window
 {
     public ProjectListViewModel Vm { get; }
+
+    private readonly HashSet<string> _openProjectViews = new(StringComparer.OrdinalIgnoreCase);
 
     public MainWindow()
     {
         InitializeComponent();
         Vm = new ProjectListViewModel();
         DataContext = Vm;
-        ProjectList.SelectionChanged += (_, _) =>
-        {
-            if (ProjectList.SelectedItem is ProjectListItemViewModel item)
-            {
-                OpenProject(item);
-            }
-        };
     }
 
     private void OnSpikeClick(object? sender, RoutedEventArgs e) => new SpikeWindow().Show();
 
     private void OnImeClick(object? sender, RoutedEventArgs e) => new ImeTestWindow().Show();
 
-    private void OnOpenClick(object? sender, RoutedEventArgs e)
+    private async void OnOpenClick(object? sender, RoutedEventArgs e)
     {
-        var dialog = new Avalonia.Controls.OpenFileDialog
+        var dialog = new OpenFileDialog
         {
             Title = "Open project.json",
             AllowMultiple = false,
-            Filters = { new Avalonia.Controls.FileDialogFilter { Name = "PigComic project", Extensions = { "json" } } },
+            Filters = { new FileDialogFilter { Name = "PigComic project", Extensions = { "json" } } },
         };
-        var picked = dialog.ShowAsync(this).GetAwaiter().GetResult();
-        if (picked is { Length: > 0 })
+        var picked = await dialog.ShowAsync(this).ConfigureAwait(true);
+        if (picked is { Length: > 0 } selected)
         {
-            Vm.AddProjectFile(picked[0]);
+            Vm.AddProjectFile(selected[0]);
         }
     }
 
-    private void OnCreateClick(object? sender, RoutedEventArgs e)
+    private async void OnCreateClick(object? sender, RoutedEventArgs e)
     {
         var dialog = new CreateProjectDialog();
-        if (dialog.ShowDialog<bool?>(this).GetAwaiter().GetResult() == true && dialog.CreatedProjectPath is { } path)
+        var created = await dialog.ShowDialog<bool?>(this).ConfigureAwait(true);
+        if (created == true && dialog.CreatedProjectPath is { } path)
         {
             Vm.AddProjectFile(path);
         }
     }
 
-    private void OnRemoveClick(object? sender, RoutedEventArgs e)
+    private async void OnRemoveClick(object? sender, RoutedEventArgs e)
     {
-        if ((sender as Avalonia.Controls.Button)?.Tag is not string path)
+        if ((sender as Button)?.Tag is not string path)
         {
             return;
         }
 
         var dialog = new RemoveProjectDialog(path, Path.GetDirectoryName(path));
-        if (dialog.ShowDialog<bool?>(this).GetAwaiter().GetResult() == true && dialog.DeleteFolder)
+        var result = await dialog.ShowDialog<bool?>(this).ConfigureAwait(true);
+        if (result != true)
         {
-            Vm.RemoveProject(path, dialog.DeleteFolder);
+            return;
         }
-        else if (dialog.Outcome == RemoveProjectDialogOutcome.RemoveFromList)
+
+        if (dialog.Outcome == RemoveProjectDialogOutcome.DeleteFolder &&
+            dialog.Folder is { } folder && Directory.Exists(folder))
         {
-            Vm.RemoveProject(path, deleteFolder: false);
+            try
+            {
+                Directory.Delete(folder, recursive: true);
+            }
+            catch (Exception ex)
+            {
+                await ContentDialog.AskAsync(this, "Delete failed", ex.Message, "OK", null);
+                return;
+            }
         }
+
+        Vm.RemoveProject(path);
     }
 
-    private void OnListDoubleTapped(object? sender, TappedEventArgs e)
+    private async void OnListDoubleTapped(object? sender, TappedEventArgs e)
     {
         if (ProjectList.SelectedItem is ProjectListItemViewModel item)
         {
-            OpenProject(item);
+            await OpenProjectAsync(item);
         }
     }
 
     private void OnListKeyDown(object? sender, KeyEventArgs e)
     {
-        if (e.Key is Key.Enter or Key.Space && ProjectList.SelectedItem is ProjectListItemViewModel item)
+        if ((e.Key is Key.Enter or Key.Space) && ProjectList.SelectedItem is ProjectListItemViewModel item)
         {
-            OpenProject(item);
             e.Handled = true;
+            _ = OpenProjectAsync(item);
         }
     }
 
-    private void OpenProject(ProjectListItemViewModel item)
+    private async Task OpenProjectAsync(ProjectListItemViewModel item)
     {
-        if (File.Exists(item.ProjectJsonPath))
+        if (!_openProjectViews.Add(item.ProjectJsonPath))
         {
-            var project = PigComic.Core.Project.ProjectFile.Load(item.ProjectJsonPath);
-            var missing = project.ChapterPaths.Where(p => !File.Exists(p)).ToList();
-            if (missing.Count > 0)
+            return; // already open — don't stack windows
+        }
+
+        try
+        {
+            if (File.Exists(item.ProjectJsonPath))
             {
-                var relink = new RelinkDialog(missing);
-                if (relink.ShowDialog<bool?>(this).GetAwaiter().GetResult() == true && !relink.Cancelled)
+                var project = PigComic.Core.Project.ProjectFile.Load(item.ProjectJsonPath);
+                var missing = project.ChapterPaths.Where(p => !File.Exists(p)).ToList();
+                if (missing.Count > 0)
                 {
+                    var relink = new RelinkDialog(missing);
+                    var ok = await relink.ShowDialog<bool?>(this).ConfigureAwait(true);
+                    if (ok != true || relink.Cancelled)
+                    {
+                        return; // Cancel → stay on the project list (SPEC §6.6)
+                    }
+
                     foreach (var (m, r) in missing.Zip(relink.ResolvedPaths))
                     {
-                        _ = r; // resolved value used to rewrite below
                         project.RemoveChapter(m);
                         project.AddChapter(r);
                     }
 
                     project.Save();
                 }
-                else
-                {
-                    return; // Cancel → stay on the main project list (SPEC §6.6)
-                }
             }
-        }
 
-        var projectView = new ProjectView(item.ProjectJsonPath);
-        projectView.Show();
+            var view = new ProjectView(item.ProjectJsonPath);
+            view.Closed += (_, _) => _openProjectViews.Remove(item.ProjectJsonPath);
+            view.Show();
+        }
+        catch (Exception ex)
+        {
+            _openProjectViews.Remove(item.ProjectJsonPath);
+            await ContentDialog.AskAsync(this, "Open project", ex.Message, "OK", null);
+        }
     }
 }
