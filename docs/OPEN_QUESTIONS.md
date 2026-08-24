@@ -1,6 +1,24 @@
 # PigComic — Open Questions
 
-**None currently open.** The five questions from the planning session were answered by the owner on 2026-08-22 and folded into SPEC.md; the resolutions are recorded below for history (details in DECISIONS.md D-33…D-36 and the updated D-09/D-18).
+## Q7 — M-TSF scheduling (OPEN, decision point after PLAN M2.6's diagnostics)
+
+The modern-flavor IME plan (`docs/IME_MODERN_COMPOSITION.md`, D-43) fixes clause capture over IMM32 first (M2.6/M2.7) and schedules the full TSF text store (M-TSF, ≈3–5 weeks) after M6. Owner decides once M2.6's diagnostics log is in hand:
+- ATOK delivers clause data in-message → keep M-TSF after M6 (recommended), gate passes on the IMM32 path;
+- ATOK delivers nothing even in-message → M-TSF jumps ahead of M5, since the gate's item 6 cannot pass for ATOK otherwise.
+
+---
+
+**Previously resolved (Q1–Q6).**
+
+## Q6 — Avalonia version strategy for the IME gate — RESOLVED 2026-08-23
+
+Owner chose **option B: upgrade to Avalonia 12.1.1** ("the app isn't finished yet, any overhaul can be accepted"). Done — see D-41 for the full consequence list and `docs/IME_HANDOFF.md` §3.1 for the upstream evidence. In short: the caret is now Avalonia's job (upstream PR #21632, released in 12.1.0), and PigComic's custom IME client is reduced to the one thing no Avalonia release provides — henkan conversion-clause highlighting (upstream issue #21647 still open).
+
+The only remaining IME work is the **owner-run manual gate** (SPEC §21.1, PLAN M2.5), which still blocks M5.
+
+---
+
+**Previously resolved.** The five questions from the planning session were answered by the owner on 2026-08-22 and folded into SPEC.md; the resolutions are recorded below for history (details in DECISIONS.md D-33…D-36 and the updated D-09/D-18).
 
 | # | Question | Owner's resolution |
 |---|---|---|

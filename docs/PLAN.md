@@ -2,9 +2,13 @@
 
 Read `docs/SPEC.md` first. Every behavior detail, schema, algorithm, and test table lives there; tasks below cite spec sections (§) instead of repeating them. **Do not invent behavior — if the spec is silent, stop and add an entry to `docs/OPEN_QUESTIONS.md` rather than guessing.**
 
+> **Stack note (2026-08-23):** the app runs on **Avalonia 12.1.1**, not 11.x (D-41). Milestones M0–M4 below were written and executed against 11.2.5 and have since been migrated; their task text is kept as the historical record, but **any UI code you write now must follow the "Avalonia 12 conventions" section of `CLAUDE.md`**. 11-era snippets (`OpenFileDialog`, `GotFocusEventArgs`, `Checked=`, un-typed `DataTemplate`s) will not compile. When a task below names one of those APIs, use the 12 equivalent and note it in your summary.
+
 Rules for executing a task:
 - Touch only the files listed (plus their csproj for new files and the test project).
-- A task is done when its **Acceptance** passes AND `dotnet build PigComic.sln` and `dotnet test` are green.
+- A task is done when its **Acceptance** passes AND `dotnet build PigComic.sln`, `dotnet test`, and `PigComic.App.exe --smoke` are all green.
+- Any task that adds a window or edits XAML/themes must also add or update a check in `src/PigComic.App/SmokeTest.cs`.
+- **Every editable text field you add is a `controls:PartTextEditor`, never a bare `TextBox`** (SPEC §21.2 control rule). It carries the IME clause capture, the modern composition rendering and the Enter guard; a plain `TextBox` silently loses all three. Use `ConfirmOnEnter="False"` in dialogs so Enter still reaches the default button. `--smoke` fails if an unapproved `TextBox` appears.
 - Never weaken or delete an existing test to make a task pass.
 - One task per session. Tasks within a milestone are ordered; do them in order unless marked (parallel-ok).
 - Manual acceptance steps state the exact expected result; run them on Windows.
@@ -17,7 +21,7 @@ Milestone order is risk-ordered and fixed. **M2 is a gate: M5–M11 must not sta
 
 ### M0.1 Create solution and projects
 - **Files**: `PigComic.sln`, `src/PigComic.Core/PigComic.Core.csproj`, `src/PigComic.App/PigComic.App.csproj`, `tests/PigComic.Core.Tests/PigComic.Core.Tests.csproj`, `.gitignore` (Visual Studio template), `.editorconfig` (dotnet defaults, 4-space indent, file-scoped namespaces).
-- **Behavior**: Core = `net8.0` classlib, nullable+implicit usings; packages: `Microsoft.Data.Sqlite`, `ClosedXML`. App = `net8.0` Avalonia 11 desktop app (Fluent theme) referencing Core; packages: `Avalonia`, `Avalonia.Desktop`, `Avalonia.Themes.Fluent`, `Avalonia.Fonts.Inter`, `CommunityToolkit.Mvvm`, `Microsoft.Extensions.DependencyInjection`, `SkiaSharp`. Tests = xunit referencing Core. App shows an empty window titled "PigComic". Folder layout per SPEC §3.
+- **Behavior**: Core = `net8.0` classlib, nullable+implicit usings; packages: `Microsoft.Data.Sqlite`, `ClosedXML`. App = `net8.0` **Avalonia 12.1.1** desktop app (Fluent theme) referencing Core; packages: `Avalonia`, `Avalonia.Desktop`, `Avalonia.Themes.Fluent`, `Avalonia.Fonts.Inter` (all 12.1.1), `CommunityToolkit.Mvvm`, `Microsoft.Extensions.DependencyInjection`, `SkiaSharp` **3.119.4** (must match Avalonia 12.1.1's requirement or NU1605 fails the build). Tests = xunit referencing Core. App shows an empty window titled "PigComic". Folder layout per SPEC §3.
 - **Acceptance**: `dotnet build` succeeds; `dotnet test` runs 1 placeholder test; `dotnet run --project src/PigComic.App` opens a window.
 
 ### M0.2 DI + service skeleton
@@ -82,10 +86,25 @@ Milestone order is risk-ordered and fixed. **M2 is a gate: M5–M11 must not sta
 - **Behavior**: SPEC §20 draw rules (resident tiles ± margin, coarse-level placeholder upscale, gray fallback, invalidate on arrival); wheel scroll, Ctrl+wheel zoom at cursor, fit-width; FPS overlay (frame time ring buffer).
 - **Acceptance** (manual, record numbers in `docs/IME_REPORT.md` sibling file `docs/SPIKE_REPORT.md`): scroll the 1000×40000 JPEG and PNG top-to-bottom fast: overlay reports ≥55 fps sustained; Task Manager working set < 900 MB; zoom in/out smooth.
 
-### M2.5 IME gate
-- **Files**: `src/PigComic.App/Views/ImeTestWindow.axaml(.cs)` (a plain `TextBox` and a multi-line `TextBox` styled as the future target editor: centered text, custom key handling for Enter/Shift+Enter that will be used in M5), menu entry; `docs/IME_REPORT.md`.
-- **Behavior**: SPEC §21 checklist embedded in the window as a checklist the tester ticks; the custom Enter interception must NOT fire while an IME composition is in progress (use Avalonia's composition events to guard) — this guard is the core deliverable reused in M5.
-- **Acceptance**: run the §21 checklist manually with JA and KO IMEs; all 5 items PASS recorded in `docs/IME_REPORT.md`. **If any item fails, stop all UI milestones and follow §21's escalation.**
+### M2.5 IME gate — OWNER-RUN, still open
+- **Status**: the code side is complete and builds on Avalonia 12.1.1 (`PartTextEditor` + `ImeTextBoxInputMethodClient` + `ImeTextPresenter` + `PartTextEditorTheme`, SPEC §21.0). What remains is the **manual run**, which only the owner can do — it needs real MS IME sessions on Windows.
+- **Files**: `src/PigComic.App/Views/ImeTestWindow.axaml(.cs)` (Debug menu → "IME gate test"); `docs/IME_REPORT.md`.
+- **Behavior**: SPEC §21.1 checklist embedded in the window as tickboxes; the confirm counter must stay 0 while composing (the Enter guard, D-32).
+- **Acceptance**: run the SPEC §21.1 checklist manually with MS IME Japanese and Korean; all **6** items PASS recorded in `docs/IME_REPORT.md`. **Until that is recorded, M5–M11 do not start.** If items 1–5 fail, follow §21.1's escalation; if only item 6's highlight half fails, consult the owner (see §21.1).
+- **Note for the executing model**: you cannot complete this task yourself. Do not mark it done, do not fake results, and do not start M5 because "it builds". If you arrive here, report that the gate needs an owner run and stop.
+- **2026-08-23 update**: the owner's partial run found the caret working (CN/ZH) but no henkan clause data with ATOK. Root cause analysis and the fix plan are in `docs/IME_MODERN_COMPOSITION.md`; tasks M2.6 and M2.7 below must land before the owner re-runs this gate. Item 6 is now judged in the **modern flavor** (SPEC §21.2).
+
+### M2.6 In-message IMM32 clause capture + IME diagnostics — CODE DONE 2026-08-24, owner run pending
+- **Files**: `src/PigComic.App/Ime/ImeMessageMonitor.cs` (new), `Ime/ImeComposition.cs` (snapshot consumption), `Ime/ImeTextBoxInputMethodClient.cs`, `Views/ImeTestWindow.axaml(.cs)` (diagnostics toggle), `SmokeTest.cs` (monitor install/uninstall check).
+- **Behavior**: `ImeMessageMonitor` installs a `Win32Properties.AddWndProcHookCallback` on each TopLevel that hosts a `PartTextEditor` (refcounted install on attach/detach; never sets `handled=true`). On `WM_IME_COMPOSITION` (0x010F) it reads — **synchronously, on the message stack, from `ImmGetContext(hwnd)`, releasing afterwards** — the fields flagged in lParam (`GCS_COMPSTR` 0x0008, `GCS_COMPCLAUSE` 0x0020, `GCS_COMPATTR` 0x0010, `GCS_CURSORPOS` 0x0080); lParam==0 means read everything (Gecko rule); unflagged fields are retained from the previous snapshot of the same composition. Snapshot stored per-hwnd; cleared on `WM_IME_ENDCOMPOSITION` (0x010E). `ImeTextBoxInputMethodClient.SetPreeditText` now consumes the snapshot (text-match guarded) and **never calls IMM32 itself** — `Imm32Native.GetClauseData` is deleted; the P/Invokes move into the monitor. Diagnostics: a toggle in `ImeTestWindow` appends one JSON line per composition message to `%TEMP%/pigcomic-ime-diag.log`: lParam bits, per-field byte counts, decoded clause array, attr bytes, compstr.
+- **Acceptance**: build/test/smoke green; unit tests for snapshot retention semantics (fake message sequence: STARTCOMPOSITION-less first message, lParam==0, partial updates) in a new `ImeSnapshotTests`; **owner run**: with diagnostics on, one JA session each with ATOK and MS-IME (type かな, press Space, move segment with ←/→, commit) — the log must show non-zero COMPCLAUSE/COMPATTR byte counts for at least one IME. Record the log summary per IME in `docs/IME_REPORT.md`. If ATOK shows zero clause bytes **in-message**, IMM32 is dead for ATOK: flag the owner to decide whether M-TSF jumps ahead of M5 (docs/IME_MODERN_COMPOSITION.md §5 priority rule).
+- **Delivered 2026-08-24**: `Ime/ImeMessageMonitor.cs` (WndProc hook via `Win32Properties.AddWndProcHookCallback`, refcounted per TopLevel, observer-only — never sets `handled`), `Ime/ImeCompositionSnapshot.cs` (lParam gating, cross-message merge, clause normalisation incl. byte-offset and monotonicity repair). `Imm32Native` is gone: `imm32.dll` is now imported in exactly one file, which is what structurally prevents the off-contract late read from coming back. `PartTextEditor` attaches/detaches the hook with the visual tree; `ImeTextBoxInputMethodClient` consumes the snapshot text-match-guarded and makes no IMM32 calls. `ImeTestWindow` gained the diagnostics toggle, a log summariser (reports clause/attr byte counts and a verdict), and a **capture kill switch** (also `PIGCOMIC_IME_NO_HOOK=1`) so the owner can A/B instantly if composition itself ever misbehaves. Tests: `ImeSnapshotTests` (12). Smoke: hook auto-attach + refcount balance.
+
+### M2.7 Modern-flavor composition rendering — CODE DONE 2026-08-24, owner visual check pending
+- **Files**: `Ime/ImeComposition.cs` (segment model), `Ime/ImeTextPresenter.cs`, `Ime/PartTextEditorTheme.axaml` (palette resources), `SmokeTest.cs` (modern-render layout check), `CLAUDE.md` (update the IME bullet), `docs/IME_HANDOFF.md` (state update).
+- **Behavior**: SPEC §21.2. Replace reverse-video with a segment list `ImeSegment(Start, Length, ImeSegmentKind)` where `ImeSegmentKind` = `Input, Converted, ConvertedTarget, TargetNotConverted, InputError` (names deliberately mirror upstream `TextInputDecorationKind`, D-44), derived from contiguous COMPATTR runs (clause boundaries refine run edges when present). The presenter maps kind → (foreground, background, underline) via theme resources per the SPEC §21.2 palette; modern mode uses colored text and background, no underline for Input; no-attr degrade = whole preedit as `Input`. The caret must remain visible over every segment style.
+- **Acceptance**: build/test/smoke green; `ImeSegmentTests` — attr byte runs → expected segments (incl. clause-refined edges, mismatched-length degrade); smoke check builds a 3-segment layout; **owner visual check**: JA composition shows colored text and the moving aqua target-clause background like Win11 Notepad; then re-run the full §21.1 gate (all 6 items, JA+KO; ATOK + MS-IME for item 6).
+- **Delivered 2026-08-24**: `Ime/ImeSegment.cs` (`ImeSegmentKind` + `ImeSegmentBuilder`, attribute runs split at clause edges, always tiling the preedit exactly); `ImeComposition.Segments`; `ImeTextPresenter` rewritten to per-segment styling with four theme-bound brushes (`CompositionForeground`, `TargetClauseForeground`, `TargetClauseBackground`, `InputErrorUnderline`) replacing the old reverse-video; palette added to `PartTextEditorTheme.axaml` as light/dark `ThemeDictionaries` per SPEC §21.2. Tests: `ImeSegmentTests` (17). Smoke: palette-bound, 3-segment layout, and the no-clause degrade path asserting the caret position survives (the ZH-caret regression guard).
 
 ---
 
@@ -339,6 +358,44 @@ Milestone order is risk-ordered and fixed. **M2 is a gate: M5–M11 must not sta
 
 - **M11.1 Page add/remove/reorder** per SPEC §27.1 (page strip UI, media copy-in, refusal rule).
 - **M11.2 PSD export** per SPEC §27.2 — first task is a written decision (DECISIONS entry) on the PSD writer library after a 1-day spike; then background+Typesetting-group writer; acceptance: exported PSD opens in Photoshop with editable text layers at part positions on an original-size canvas.
+
+---
+
+## M-TSF — TSF text store for PartTextEditor (independent track; Phase C of docs/IME_MODERN_COMPOSITION.md)
+
+**Scheduling**: recommended slot is after M6 (editor + regions solid) so the store lands on the real editor; it jumps **ahead of M5** only if M2.6's diagnostics prove ATOK yields no clause data via IMM32 even in-message (owner decides). Each task must leave the IMM32 path intact — the TSF store is gated by an app setting (`tsf.enabled`, default off until MT.6) and by an Avalonia version check that stands it down when upstream `Win32PlatformOptions.UseTsfTextInput` ships with decoration rendering (watch PR #20890).
+
+Read `docs/IME_MODERN_COMPOSITION.md` §4 and its source index before every task. Prime references: Windows Terminal `src/tsf/Implementation.cpp` (colored rendering), Chromium `tsf_text_store.cc` (lock/notification discipline), MS `tsfapp/textstor.cpp` (ACP method reference), WPF `TextStore.cs` + `UnsafeNativeMethodsTextServices.cs` (MIT, managed interop), Avalonia PR #20890 (design decisions to mirror: `TrackProperties` not `GetProperty`; attach client before `AssociateFocus`; clear association before client on detach).
+
+### MT.1 TSF interop layer
+- **Files**: `src/PigComic.App/Ime/Tsf/NativeMethods.txt` + CsWin32 package refs in `PigComic.App.csproj`, `Ime/Tsf/TsfInterop.cs` (CLSIDs/GUIDs/constants CsWin32 doesn't emit).
+- **Behavior**: `Microsoft.Windows.CsWin32` generates `ITextStoreACP`, `ITextStoreACPSink`, `ITfThreadMgr`, `ITfDocumentMgr`, `ITfContext`, `ITfSource`, `ITfContextOwnerCompositionSink`, `ITfTextEditSink`, `ITfReadOnlyProperty`, `ITfRangeACP`, `ITfCategoryMgr`, `ITfDisplayAttributeMgr/Info`, `TF_DISPLAYATTRIBUTE` etc. (verified to build on this machine 2026-08-23). All TSF code Windows-guarded.
+- **Acceptance**: solution builds with the generated interfaces; a unit test instantiates a class implementing generated `ITfContextOwnerCompositionSink`; smoke unchanged.
+
+### MT.2 Thread manager + document plumbing
+- **Files**: `Ime/Tsf/TsfManager.cs`.
+- **Behavior**: per-UI-thread: CoCreate `TF_ThreadMgr` → `Activate`; optionally set the JA sentence-mode compartment (`TF_SENTENCEMODE_PHRASEPREDICT`, Chromium `tsf_bridge.cc:233-256`). Per editor: `CreateDocumentMgr` → `CreateContext(store)` → `Push`; advise `ITfTextEditSink`. Focus protocol on `PartTextEditor` Got/LostFocus: set `InputMethod.SetIsInputMethodEnabled(control,false)` variant flow per docs/IME_MODERN_COMPOSITION.md §4 (Avalonia goes quiet), attach store client, then `AssociateFocus`; reverse order on detach; keep docmgr refs alive (AssociateFocus does not addref).
+- **Acceptance**: with `tsf.enabled` and a debug "TSF status" readout in `ImeTestWindow`: focusing the TSF test editor shows Activated/DocFocused; focusing a normal TextBox restores stock IMM32 behavior (JA typing still works there). App runs with the setting off exactly as before.
+
+### MT.3 Minimal ITextStoreACP store (composition commits text)
+- **Files**: `Ime/Tsf/TsfTextStore.cs`.
+- **Behavior**: the ~12 real methods (AdviseSink/UnadviseSink, RequestLock with sync/async queue per Chromium §620-706, GetStatus, QueryInsert, Get/SetSelection, GetText/SetText, InsertTextAtSelection, GetEndACP, GetActiveView, GetWnd) + `E_NOTIMPL` stubs; notifications only after unlock, never echoing TIP edits; document = the `PartTextEditor` text + caret.
+- **Acceptance** (owner run): JA text can be composed and committed into the TSF test editor with MS-IME and ATOK; backspace/escape/mid-string composition behave like Notepad; Core tests + smoke green; toggling `tsf.enabled` off restores the IMM32 path.
+
+### MT.4 Geometry: GetTextExt / candidate window
+- **Files**: `TsfTextStore.cs` (GetTextExt/GetScreenExt/GetACPFromPoint), presenter hit-test helpers.
+- **Behavior**: answer `GetTextExt` from the presenter's synchronous layout (DIP→screen via `TopLevel.RenderScaling` + ClientToScreen); fire `OnLayoutChange` after every composition repaint; `TS_E_NOLAYOUT` only when truly unavoidable (docs/IME_MODERN_COMPOSITION.md §4).
+- **Acceptance** (owner run): the candidate window opens adjacent to the composition caret (not screen corner) for MS-IME and ATOK, in both a top-of-window and bottom-of-window editor placement, at 100% and 150% DPI.
+
+### MT.5 Display attributes → modern rendering
+- **Files**: `TsfTextStore.cs` (`ITfTextEditSink.OnEndEdit` → `TrackProperties(GUID_PROP_ATTRIBUTE)` walk → atom → `ITfCategoryMgr.GetGUID` → `ITfDisplayAttributeMgr.GetDisplayAttributeInfo`), mapping to the M2.7 segment model extended with optional explicit colors (`Foreground?/Background?/Underline` — mirroring `TextInputDecoration`, D-44).
+- **Behavior**: TIP-specified `TF_CT_COLORREF` colors render verbatim; `TF_CT_NONE`/`TF_CT_SYSCOLOR` fall back to the SPEC §21.2 palette; `bAttr` drives the kind. Per-atom cache.
+- **Acceptance** (owner run): MS-IME shows the modern flavor; **ATOK shows the user's own 表示色カスタマイズ colors** (change a color in ATOK settings → PigComic follows); KO/ZH unchanged-or-better; smoke check extended with a decorated-layout build.
+
+### MT.6 Hardening + default-on
+- **Files**: store/manager fixes; `SmokeTest.cs`; `docs/IME_REPORT.md` (TSF gate section); default `tsf.enabled=true`.
+- **Behavior**: survive the churn matrix: rapid focus switching between PartTextEditor/TextBox/other windows mid-composition, Esc/commit/Enter-guard interplay (D-32 holds under TSF), window close mid-composition, IME on/off toggling, language switching JA↔KO↔EN, Win+H voice typing inserts text (ACP store benefit), 8+ hour session stability.
+- **Acceptance** (owner run): full §21.1 gate re-run under TSF with MS-IME JA, ATOK, MS KO, MS Pinyin — all PASS recorded in `docs/IME_REPORT.md`; any FAIL keeps default off and files the defect. Only then flip the default.
 
 ---
 

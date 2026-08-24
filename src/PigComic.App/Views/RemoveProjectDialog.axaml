@@ -6,9 +6,9 @@
     <StackPanel Margin="16" Spacing="10">
         <TextBlock x:Name="Hint" TextWrapping="Wrap" Foreground="Gray"/>
         <RadioButton x:Name="ListOnlyRadio" Content="Remove from list only (keep folder)" IsChecked="True"
-                     GroupName="mode" Checked="OnModeChanged"/>
+                     GroupName="mode" IsCheckedChanged="OnModeChanged"/>
         <RadioButton x:Name="DeleteRadio" Content="Delete project folder from disk (permanent, no recycle bin — D-08)"
-                     GroupName="mode" Checked="OnModeChanged"/>
+                     GroupName="mode" IsCheckedChanged="OnModeChanged"/>
         <CheckBox x:Name="ConfirmDelete" Content="I understand this permanently deletes the folder"
                   IsEnabled="False" IsChecked="False"/>
         <TextBlock x:Name="ErrorText" Foreground="Red" TextWrapping="Wrap"/>

@@ -9,6 +9,39 @@
     the in-composition caret and the active henkan clause highlight (SPEC §21, D-40).
     All bindings match the stock template so behavior is unchanged apart from rendering.
   -->
+
+  <!--
+    Modern-flavor IME composition palette (SPEC §21.2, D-43): coloured composition text and
+    a coloured background on the active henkan clause, matching Windows 11 Notepad / Excel
+    rather than the legacy underline flavor.
+
+    These are the application's own colours by design, not the IME's: a live display-attribute
+    dump showed the Windows 11 Microsoft Japanese IME registers no colours at all (only
+    underline styles), so Notepad's look is likewise app-side styling keyed on attribute kind.
+    (When the M-TSF track lands, an IME that *does* specify colours — ATOK — overrides these.)
+
+    Composition text is plain, orthodox blue (#0000FF) — owner's call, 2026-08-24. The dark
+    variant keeps the identical hue (240°) and only raises lightness, because #0000FF on a
+    dark background sits at ~2.3:1 and is genuinely hard to read; #7C7CFF is the same blue at
+    ~5:1. Change these two values together if you retune.
+
+    Contrast: blue on white ≈ 8.6:1; black on #A5E8FA ≈ 16:1; white on #0E6E8C ≈ 5.9:1.
+    Never white on pure aqua (1.25:1).
+  -->
+  <ResourceDictionary.ThemeDictionaries>
+    <ResourceDictionary x:Key="Default">
+      <SolidColorBrush x:Key="ImeCompositionForeground" Color="#0000FF" />
+      <SolidColorBrush x:Key="ImeTargetClauseForeground" Color="#000000" />
+      <SolidColorBrush x:Key="ImeTargetClauseBackground" Color="#A5E8FA" />
+      <SolidColorBrush x:Key="ImeInputErrorUnderline" Color="#C42B1C" />
+    </ResourceDictionary>
+    <ResourceDictionary x:Key="Dark">
+      <SolidColorBrush x:Key="ImeCompositionForeground" Color="#7C7CFF" />
+      <SolidColorBrush x:Key="ImeTargetClauseForeground" Color="#FFFFFF" />
+      <SolidColorBrush x:Key="ImeTargetClauseBackground" Color="#0E6E8C" />
+      <SolidColorBrush x:Key="ImeInputErrorUnderline" Color="#FF99A4" />
+    </ResourceDictionary>
+  </ResourceDictionary.ThemeDictionaries>
   <ControlTheme x:Key="PartTextEditorTheme" TargetType="controls:PartTextEditor">
     <Setter Property="Foreground" Value="{DynamicResource TextControlForeground}" />
     <Setter Property="Background" Value="{DynamicResource TextControlBackground}" />
@@ -83,7 +116,10 @@
                                     SelectionBrush="{TemplateBinding SelectionBrush}"
                                     SelectionForegroundBrush="{TemplateBinding SelectionForegroundBrush}"
                                     CaretBrush="{TemplateBinding CaretBrush}"
-                                    ActiveClauseBackground="{DynamicResource SystemAccentColor}"
+                                    CompositionForeground="{DynamicResource ImeCompositionForeground}"
+                                    TargetClauseForeground="{DynamicResource ImeTargetClauseForeground}"
+                                    TargetClauseBackground="{DynamicResource ImeTargetClauseBackground}"
+                                    InputErrorUnderline="{DynamicResource ImeInputErrorUnderline}"
                                     HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
                                     VerticalAlignment="{TemplateBinding VerticalContentAlignment}" />
                     </Panel>

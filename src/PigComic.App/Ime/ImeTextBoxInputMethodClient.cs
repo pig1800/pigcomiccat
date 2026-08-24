@@ -142,6 +142,16 @@ public sealed class ImeTextBoxInputMethodClient : TextInputMethodClient
 
     public override void SetPreeditText(string? preeditText) => SetPreeditText(preeditText, null);
 
+    /// <summary>
+    /// Avalonia 12.1.0+ supplies <paramref name="cursorPos"/> from GCS_CURSORPOS itself
+    /// (upstream PR #21632), so it is taken as authoritative and never re-read from IMM32 —
+    /// that parameter is what makes the Chinese in-composition caret work (D-41).
+    ///
+    /// <para>Conversion-clause styling comes from <see cref="ImeMessageMonitor"/>, which
+    /// captured it synchronously inside the WM_IME_COMPOSITION message. This client performs
+    /// no IMM32 calls of its own: reading here is off-contract and was why ATOK never showed
+    /// a henkan highlight (D-43, PLAN M2.6).</para>
+    /// </summary>
     public override void SetPreeditText(string? preeditText, int? cursorPos)
     {
         if (_presenter is null || _parent is null)
@@ -149,52 +159,36 @@ public sealed class ImeTextBoxInputMethodClient : TextInputMethodClient
             return;
         }
 
-        // Enrich with IMM32 caret + clause data when we have a rich presenter and a
-        // composition string. On failure or absence of clause data this degrades to the
-        // base flat-underline rendering with the best-known caret position.
-        if (_presenter is ImeTextPresenter ime)
-        {
-            if (string.IsNullOrEmpty(preeditText))
-            {
-                ime.Composition = null;
-            }
-            else
-            {
-                var hwnd = GetWindowHandle();
-                var rich = hwnd is not null ? Imm32Native.GetComposition(hwnd.Value) : null;
-
-                if (rich is not null && rich.Text == preeditText)
-                {
-                    ime.Composition = rich; // includes GCS_CURSORPOS caret + clause highlight
-                }
-                else
-                {
-                    // IMM query failed / out of sync: still show the string with a caret.
-                    var caret = cursorPos is >= 0 && cursorPos <= preeditText.Length
-                        ? cursorPos.Value
-                        : preeditText.Length;
-                    ime.Composition = new ImeComposition(preeditText, caret, null, null);
-                }
-            }
-        }
-        else
+        if (_presenter is not ImeTextPresenter ime)
         {
             // Plain presenter: replicate the built-in behavior.
             _presenter.SetCurrentValue(TextPresenter.PreeditTextProperty, preeditText);
             _presenter.SetCurrentValue(TextPresenter.PreeditTextCursorPositionProperty, cursorPos);
+            return;
         }
-    }
 
-    private IntPtr? GetWindowHandle()
-    {
-        if (_parent is null)
+        if (string.IsNullOrEmpty(preeditText))
         {
-            return null;
+            ime.Composition = null;
+            return;
         }
 
-        var top = TopLevel.GetTopLevel(_parent);
-        var handle = top?.PlatformImpl?.GetType().GetProperty("Handle")?.GetValue(top.PlatformImpl);
-        return handle is IPlatformHandle ph ? ph.Handle : null;
+        // Caret comes from Avalonia; default to end-of-preedit when it declines to say.
+        var caret = cursorPos is >= 0 && cursorPos <= preeditText.Length
+            ? cursorPos.Value
+            : preeditText.Length;
+
+        // Clause styling is best-effort. If the captured snapshot describes a different
+        // string than the one Avalonia just handed us, the two have drifted apart and the
+        // clause data would mis-position; drop it and render the whole preedit as Input.
+        var snapshot = ImeMessageMonitor.TryGetSnapshot(TopLevel.GetTopLevel(_parent));
+        var inSync = snapshot is not null && snapshot.Text == preeditText;
+
+        ime.Composition = new ImeComposition(
+            preeditText,
+            caret,
+            inSync ? snapshot!.ClauseBoundaries : null,
+            inSync ? snapshot!.Attributes : null);
     }
 
     public IDisposable BeginChange()

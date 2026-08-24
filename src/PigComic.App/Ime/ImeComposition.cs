@@ -1,30 +1,37 @@
-using System.Runtime.InteropServices;
-using System.Text;
-
 namespace PigComic.App.Ime;
 
 /// <summary>
-/// A rich snapshot of an in-progress IMM32 composition: the preedit string, the
-/// caret position inside it, and the conversion-clause styling. Avalonia 11.x's
-/// Win32 path only forwards the raw composition string (GCS_COMPSTR), never the
-/// caret (GCS_CURSORPOS) or clause/attribute data (GCS_COMPCLAUSE/GCS_COMPATTR),
-/// which is why the in-composition caret (ZH Pinyin) and the active henkan
-/// segment highlight (JA) do not render (SPEC §21 escalation, D-40).
+/// A rich snapshot of an in-progress IME composition: the preedit string, the caret
+/// position inside it, and the conversion-clause styling.
+///
+/// Division of labour (D-41, D-43):
+/// <list type="bullet">
+/// <item>The preedit string and the caret position are supplied by Avalonia itself, via
+/// <c>TextInputMethodClient.SetPreeditText(text, cursorPos)</c> — the Win32 backend reads
+/// GCS_CURSORPOS since upstream PR #21632 (shipped in 12.1.0). This is what makes the
+/// Chinese in-composition caret work; never re-read that flag from IMM32.</item>
+/// <item>Conversion clause data (GCS_COMPCLAUSE / GCS_COMPATTR) is still not forwarded by
+/// any Avalonia release (upstream issue #21647), so <see cref="ImeMessageMonitor"/> captures
+/// it in-message and it arrives here already merged and normalised.</item>
+/// </list>
 /// </summary>
 public sealed class ImeComposition
 {
-    // IMM32 ATTR_* composition attributes (re-exported so callers/tests need no interop).
-    public const byte AttrInput = 0x00;
-    public const byte AttrTargetConverted = 0x01;
-    public const byte AttrConverted = 0x02;
-    public const byte AttrTargetNotConverted = 0x03;
-    public const byte AttrInputError = 0x04;
-    public const byte AttrFixedConverted = 0x05;
+    // IMM32 ATTR_* composition attributes, re-exported so callers/tests need no interop.
+    // Canonical definitions live in ImeSegmentBuilder.
+    public const byte AttrInput = ImeSegmentBuilder.AttrInput;
+    public const byte AttrTargetConverted = ImeSegmentBuilder.AttrTargetConverted;
+    public const byte AttrConverted = ImeSegmentBuilder.AttrConverted;
+    public const byte AttrTargetNotConverted = ImeSegmentBuilder.AttrTargetNotConverted;
+    public const byte AttrInputError = ImeSegmentBuilder.AttrInputError;
+    public const byte AttrFixedConverted = ImeSegmentBuilder.AttrFixedConverted;
 
-    /// <summary>The full preedit string (GCS_COMPSTR).</summary>
+    private IReadOnlyList<ImeSegment>? _segments;
+
+    /// <summary>The full preedit string, as given to us by Avalonia.</summary>
     public string Text { get; }
 
-    /// <summary>Caret position within <see cref="Text"/> (GCS_CURSORPOS), clamped to [0, Text.Length].</summary>
+    /// <summary>Caret position within <see cref="Text"/>, clamped to [0, Text.Length].</summary>
     public int CursorPosition { get; }
 
     /// <summary>
@@ -46,9 +53,17 @@ public sealed class ImeComposition
     }
 
     /// <summary>
-    /// The [start, end) span of the "target converted" clause — the active henkan
-    /// segment that should be highlighted (reverse-video). Returns null when there
-    /// is no convertible clause (plain input / KO jamo / single unconverted run).
+    /// The composition split into styled runs (SPEC §21.2). Always tiles the whole preedit;
+    /// degrades to a single <see cref="ImeSegmentKind.Input"/> segment when the IME supplies
+    /// no usable attributes.
+    /// </summary>
+    public IReadOnlyList<ImeSegment> Segments =>
+        _segments ??= ImeSegmentBuilder.Build(Text, ClauseBoundaries, Attributes);
+
+    /// <summary>
+    /// The [start, end) span of the active henkan clause — the converted-and-selected
+    /// segment. Null when there is no convertible clause (plain input / KO jamo / a single
+    /// unconverted run).
     /// </summary>
     public (int Start, int End)? ActiveClause
     {
@@ -80,116 +95,6 @@ public sealed class ImeComposition
             }
 
             return null;
-        }
-    }
-}
-
-/// <summary>Minimal IMM32 P/Invoke used to enrich the preedit with caret + clause data.</summary>
-internal static class Imm32Native
-{
-    // GCS_* retrieval flags.
-    public const uint GCS_COMPSTR = 0x0008;
-    public const uint GCS_COMPATTR = 0x0010;
-    public const uint GCS_COMPCLAUSE = 0x0020;
-    public const uint GCS_CURSORPOS = 0x0080;
-
-    [DllImport("imm32.dll", SetLastError = true)]
-    public static extern IntPtr ImmGetContext(IntPtr hWnd);
-
-    [DllImport("imm32.dll")]
-    public static extern bool ImmReleaseContext(IntPtr hWnd, IntPtr hIMC);
-
-    [DllImport("imm32.dll", SetLastError = false, CharSet = CharSet.Unicode, EntryPoint = "ImmGetCompositionStringW", ExactSpelling = true)]
-    private static extern int ImmGetCompositionString(IntPtr hIMC, uint dwIndex, IntPtr lpBuf, uint dwBufLen);
-
-    /// <summary>Reads a byte buffer for the given GCS flag; null when unavailable/empty.</summary>
-    private static byte[]? ReadBytes(IntPtr himc, uint flag)
-    {
-        if (himc == IntPtr.Zero)
-        {
-            return null;
-        }
-
-        var len = ImmGetCompositionString(himc, flag, IntPtr.Zero, 0);
-        if (len <= 0)
-        {
-            return null;
-        }
-
-        var buffer = new byte[len];
-        var gc = GCHandle.Alloc(buffer, GCHandleType.Pinned);
-        try
-        {
-            var read = ImmGetCompositionString(himc, flag, gc.AddrOfPinnedObject(), (uint)len);
-            if (read < 0)
-            {
-                return null;
-            }
-
-            if (read < len)
-            {
-                Array.Resize(ref buffer, read);
-            }
-
-            return buffer;
-        }
-        finally
-        {
-            gc.Free();
-        }
-    }
-
-    /// <summary>
-    /// Captures the full composition state for a window handle. Returns null when no
-    /// IMM context / no active composition. All reads are best-effort: any individual
-    /// flag that fails simply contributes no data.
-    /// </summary>
-    public static ImeComposition? GetComposition(IntPtr hwnd)
-    {
-        if (hwnd == IntPtr.Zero || !OperatingSystem.IsWindows())
-        {
-            return null;
-        }
-
-        var himc = ImmGetContext(hwnd);
-        if (himc == IntPtr.Zero)
-        {
-            return null;
-        }
-
-        try
-        {
-            var textBytes = ReadBytes(himc, GCS_COMPSTR);
-            var text = textBytes is null ? "" : Encoding.Unicode.GetString(textBytes).TrimEnd('\0');
-            if (text.Length == 0)
-            {
-                return null;
-            }
-
-            // Caret position is a single DWORD.
-            var cursor = 0;
-            var cursorBytes = ReadBytes(himc, GCS_CURSORPOS);
-            if (cursorBytes is { Length: >= 4 })
-            {
-                cursor = BitConverter.ToInt32(cursorBytes, 0);
-            }
-
-            // Clause boundaries: array of DWORD character offsets.
-            uint[]? clause = null;
-            var clauseBytes = ReadBytes(himc, GCS_COMPCLAUSE);
-            if (clauseBytes is { Length: >= 8 })
-            {
-                clause = new uint[clauseBytes.Length / 4];
-                Buffer.BlockCopy(clauseBytes, 0, clause, 0, clauseBytes.Length);
-            }
-
-            byte[]? attr = ReadBytes(himc, GCS_COMPATTR);
-
-            return new ImeComposition(text, cursor, clause, attr);
-        }
-        finally
-        {
-            ImmReleaseContext(hwnd, himc);
         }
     }
 }

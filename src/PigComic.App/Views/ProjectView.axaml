@@ -1,5 +1,6 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:views="clr-namespace:PigComic.App.Views"
         x:Class="PigComic.App.Views.ProjectView"
         Title="Project" Width="960" Height="640">
     <DockPanel>
@@ -19,7 +20,8 @@
         <Border Margin="12" CornerRadius="6" Background="#0FFFFFFF" Padding="6">
             <ListBox x:Name="ChapterList">
                 <ListBox.ItemTemplate>
-                    <DataTemplate>
+                    <!-- Avalonia 12 compiles bindings by default: DataTemplates need x:DataType. -->
+                    <DataTemplate x:DataType="views:ChapterRow">
                         <Grid ColumnDefinitions="3*,*,2*,*" MinHeight="28">
                             <TextBlock Grid.Column="0" Text="{Binding FileName}" VerticalAlignment="Center"/>
                             <TextBlock Grid.Column="1" Text="{Binding ChapterNumber}" VerticalAlignment="Center"/>

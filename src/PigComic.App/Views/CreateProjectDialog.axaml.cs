@@ -1,5 +1,6 @@
 using Avalonia.Controls;
 using Avalonia.Interactivity;
+using PigComic.App.Services;
 using PigComic.Core.Project;
 
 namespace PigComic.App.Views;
@@ -17,8 +18,7 @@ public partial class CreateProjectDialog : Avalonia.Controls.Window
 
     private async void OnBrowseClick(object? sender, RoutedEventArgs e)
     {
-        var dialog = new OpenFolderDialog { Title = "Project folder" };
-        var picked = await dialog.ShowAsync(this).ConfigureAwait(true);
+        var picked = await FilePickers.OpenFolderAsync(this, "Project folder").ConfigureAwait(true);
         if (!string.IsNullOrEmpty(picked))
         {
             FolderBox.Text = picked;

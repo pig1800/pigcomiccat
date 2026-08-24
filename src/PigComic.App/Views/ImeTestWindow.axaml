@@ -31,11 +31,27 @@
                 <CheckBox Content="4. Shift+Enter during composition does not break composition state; Enter during
                                composition never confirms (watch log below)" x:Name="Check4"/>
                 <CheckBox Content="5. IME on/off toggling works while the control is focused" x:Name="Check5"/>
-                <CheckBox Content="6. JA/ZH: the in-composition caret and the henkan word / Pinyin string are drawn
-                               TOGETHER at the caret (underline + caret visible inside the composition). Compare
-                               against the centered reference box on the left." x:Name="Check6"/>
+                <CheckBox Content="6. Modern rendering (SPEC §21.2): composition text is COLOURED (not underlined)
+                               with the caret visible inside it; after Space, the active henkan clause shows a
+                               COLOURED BACKGROUND that moves with ←/→. Verify with BOTH MS-IME JA and ATOK." x:Name="Check6"/>
                 <TextBlock Text="Confirm log:" FontWeight="SemiBold" Margin="0,12,0,0"/>
                 <TextBlock x:Name="ConfirmLog" TextWrapping="Wrap"/>
+
+                <TextBlock Text="IMM32 diagnostics (PLAN M2.6)" FontWeight="SemiBold" Margin="0,16,0,0"/>
+                <TextBlock x:Name="HookStatus" TextWrapping="Wrap" FontSize="11"/>
+                <CheckBox x:Name="CaptureToggle" Content="Capture clause data in-message (uncheck to A/B against the old behaviour)"
+                          IsCheckedChanged="OnCaptureToggled"/>
+                <CheckBox x:Name="DiagToggle" Content="Log every composition message to a file"
+                          IsCheckedChanged="OnDiagToggled"/>
+                <TextBlock x:Name="DiagPath" TextWrapping="Wrap" FontSize="11" Foreground="Gray"/>
+                <TextBlock x:Name="DiagStatus" TextWrapping="Wrap" FontSize="11"/>
+                <StackPanel Orientation="Horizontal" Spacing="6" Margin="0,4,0,0">
+                    <Button Content="Summarise log" Click="OnSummariseDiag"/>
+                    <Button Content="Clear log" Click="OnClearDiag"/>
+                </StackPanel>
+                <TextBlock Text="Turn on, compose one JA session per IME (type kana → Space → ←/→ → Enter), then
+                                 Summarise. Non-zero clause/attr byte counts mean IMM32 is delivering henkan data."
+                           TextWrapping="Wrap" FontSize="11" FontStyle="Italic" Foreground="Gray"/>
             </StackPanel>
         </Grid>
     </DockPanel>

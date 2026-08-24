@@ -1,6 +1,7 @@
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
+using PigComic.App.Services;
 using PigComic.App.ViewModels;
 
 namespace PigComic.App.Views;
@@ -24,16 +25,11 @@ public partial class MainWindow : Window
 
     private async void OnOpenClick(object? sender, RoutedEventArgs e)
     {
-        var dialog = new OpenFileDialog
+        var picked = await FilePickers.OpenFileAsync(
+            this, "Open project.json", "PigComic project", "json").ConfigureAwait(true);
+        if (picked is not null)
         {
-            Title = "Open project.json",
-            AllowMultiple = false,
-            Filters = { new FileDialogFilter { Name = "PigComic project", Extensions = { "json" } } },
-        };
-        var picked = await dialog.ShowAsync(this).ConfigureAwait(true);
-        if (picked is { Length: > 0 } selected)
-        {
-            Vm.AddProjectFile(selected[0]);
+            Vm.AddProjectFile(picked);
         }
     }
 

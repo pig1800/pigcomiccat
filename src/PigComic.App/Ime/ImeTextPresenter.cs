@@ -1,4 +1,5 @@
 using Avalonia;
+using Avalonia.Collections;
 using Avalonia.Controls.Presenters;
 using Avalonia.Media;
 using Avalonia.Media.TextFormatting;
@@ -7,18 +8,27 @@ using Avalonia.Utilities;
 namespace PigComic.App.Ime;
 
 /// <summary>
-/// A <see cref="TextPresenter"/> that renders the IME preedit with conversion-clause
-/// awareness (SPEC §21 escalation, D-40). The base presenter underlines the whole
-/// preedit uniformly because Avalonia's Win32 IMM32 path forwards only the raw
-/// composition string. This presenter additionally accepts an <see cref="ImeComposition"/>
-/// so the active henkan segment (JA) is highlighted reverse-video and the rest is
-/// underlined, matching Notepad. The in-composition caret is handled by the base
-/// class via <see cref="TextPresenter.PreeditTextCursorPosition"/>, which the custom
-/// IME client sets from GCS_CURSORPOS.
+/// A <see cref="TextPresenter"/> that renders the IME preedit in the **modern flavor**
+/// (SPEC §21.2, D-43): composition text is coloured rather than underlined, and the active
+/// henkan clause gets a coloured background — the look of Windows 11 Notepad and current
+/// Excel, rather than the thin/thick underlines of memoQ, VSCode and WPF.
+///
+/// <para>The colours come from theme resources (see <c>PartTextEditorTheme.axaml</c>), which
+/// is legitimate rather than a hack: a live display-attribute dump showed that the Windows 11
+/// Microsoft Japanese IME registers <i>no colours at all</i> — only underline styles — so
+/// Notepad's blue/aqua rendering is likewise the application's own palette keyed on the
+/// attribute kind.</para>
+///
+/// <para>The in-composition caret is untouched: it is drawn by the base class from
+/// <see cref="TextPresenter.PreeditTextCursorPosition"/>, which
+/// <see cref="ImeTextBoxInputMethodClient"/> sets from the value Avalonia supplies. Nothing
+/// here may interfere with it — that is what keeps the Chinese caret working.</para>
 /// </summary>
 public class ImeTextPresenter : TextPresenter
 {
     private ImeComposition? _composition;
+    private TextDecorationCollection? _errorDecoration;
+    private IBrush? _errorDecorationBrush;
 
     /// <summary>
     /// The rich composition to render. Setting this also sets <see cref="TextPresenter.PreeditText"/>
@@ -45,23 +55,45 @@ public class ImeTextPresenter : TextPresenter
         }
     }
 
-    /// <summary>Brushes for the active (henkan) clause. Defaults follow the system selection colors.</summary>
-    public static readonly StyledProperty<IBrush?> ActiveClauseBackgroundProperty =
-        AvaloniaProperty.Register<ImeTextPresenter, IBrush?>(nameof(ActiveClauseBackground));
+    /// <summary>Text colour for composition that is not the active clause
+    /// (<see cref="ImeSegmentKind.Input"/> and <see cref="ImeSegmentKind.Converted"/>).</summary>
+    public static readonly StyledProperty<IBrush?> CompositionForegroundProperty =
+        AvaloniaProperty.Register<ImeTextPresenter, IBrush?>(nameof(CompositionForeground));
 
-    public static readonly StyledProperty<IBrush?> ActiveClauseForegroundProperty =
-        AvaloniaProperty.Register<ImeTextPresenter, IBrush?>(nameof(ActiveClauseForeground));
+    /// <summary>Text colour inside the active henkan clause.</summary>
+    public static readonly StyledProperty<IBrush?> TargetClauseForegroundProperty =
+        AvaloniaProperty.Register<ImeTextPresenter, IBrush?>(nameof(TargetClauseForeground));
 
-    public IBrush? ActiveClauseBackground
+    /// <summary>Background behind the active henkan clause — the segment highlight.</summary>
+    public static readonly StyledProperty<IBrush?> TargetClauseBackgroundProperty =
+        AvaloniaProperty.Register<ImeTextPresenter, IBrush?>(nameof(TargetClauseBackground));
+
+    /// <summary>Underline colour for IME-flagged erroneous input.</summary>
+    public static readonly StyledProperty<IBrush?> InputErrorUnderlineProperty =
+        AvaloniaProperty.Register<ImeTextPresenter, IBrush?>(nameof(InputErrorUnderline));
+
+    public IBrush? CompositionForeground
     {
-        get => GetValue(ActiveClauseBackgroundProperty);
-        set => SetValue(ActiveClauseBackgroundProperty, value);
+        get => GetValue(CompositionForegroundProperty);
+        set => SetValue(CompositionForegroundProperty, value);
     }
 
-    public IBrush? ActiveClauseForeground
+    public IBrush? TargetClauseForeground
     {
-        get => GetValue(ActiveClauseForegroundProperty);
-        set => SetValue(ActiveClauseForegroundProperty, value);
+        get => GetValue(TargetClauseForegroundProperty);
+        set => SetValue(TargetClauseForegroundProperty, value);
+    }
+
+    public IBrush? TargetClauseBackground
+    {
+        get => GetValue(TargetClauseBackgroundProperty);
+        set => SetValue(TargetClauseBackgroundProperty, value);
+    }
+
+    public IBrush? InputErrorUnderline
+    {
+        get => GetValue(InputErrorUnderlineProperty);
+        set => SetValue(InputErrorUnderlineProperty, value);
     }
 
     protected override TextLayout CreateTextLayout()
@@ -69,41 +101,97 @@ public class ImeTextPresenter : TextPresenter
         var composition = _composition;
         var preeditText = PreeditText;
 
-        // No rich composition, or no clause info → fall back to the base flat-underline
-        // rendering (covers KO jamo, ZH pre-conversion, and any IME without clause data).
-        var active = composition?.ActiveClause;
-        if (composition is null || string.IsNullOrEmpty(preeditText) || active is null)
+        if (composition is null || string.IsNullOrEmpty(preeditText))
         {
             return base.CreateTextLayout();
         }
 
-        var caretIndex = CaretIndex;
-        var text = GetCombinedText(Text, caretIndex, preeditText);
-        var typeface = new Typeface(FontFamily, FontStyle, FontWeight, FontStretch);
-        var foreground = Foreground;
-
-        // Whole preedit gets an underline (it is uncommitted), exactly like the base class.
-        var overrides = new List<ValueSpan<TextRunProperties>>
+        var segments = composition.Segments;
+        if (segments.Count == 0)
         {
-            new(caretIndex, preeditText.Length,
-                new GenericTextRunProperties(typeface, FontFeatures, FontSize,
-                    foregroundBrush: foreground, textDecorations: TextDecorations.Underline)),
-        };
-
-        // The active henkan clause is drawn reverse-video on top of the underline.
-        var (start, end) = active.Value;
-        var length = Math.Max(0, end - start);
-        if (length > 0)
-        {
-            overrides.Add(new ValueSpan<TextRunProperties>(
-                caretIndex + start, length,
-                new GenericTextRunProperties(typeface, FontFeatures, FontSize,
-                    foregroundBrush: ActiveClauseForeground ?? Brushes.White,
-                    backgroundBrush: ActiveClauseBackground ?? Brushes.Black,
-                    textDecorations: TextDecorations.Underline)));
+            return base.CreateTextLayout();
         }
 
-        return CreateLayoutInternal(text, typeface, overrides);
+        // The base class inserts the preedit at the caret; mirror that, defensively clamped
+        // so a stale caret index can never throw mid-composition.
+        var text = Text;
+        var caretIndex = Math.Clamp(CaretIndex, 0, text?.Length ?? 0);
+        var combined = GetCombinedText(text, caretIndex, preeditText);
+        var typeface = new Typeface(FontFamily, FontStyle, FontWeight, FontStretch);
+
+        // NOTE (Avalonia 12): GenericTextRunProperties reordered its parameters —
+        // fontFeatures moved to the end, textDecorations is now the 3rd positional.
+        var overrides = new List<ValueSpan<TextRunProperties>>(segments.Count);
+        foreach (var segment in segments)
+        {
+            if (segment.Length <= 0)
+            {
+                continue;
+            }
+
+            var (foreground, background, decorations) = StyleFor(segment.Kind);
+            overrides.Add(new ValueSpan<TextRunProperties>(
+                caretIndex + segment.Start,
+                segment.Length,
+                new GenericTextRunProperties(
+                    typeface,
+                    FontSize,
+                    decorations,
+                    foregroundBrush: foreground,
+                    backgroundBrush: background,
+                    fontFeatures: FontFeatures)));
+        }
+
+        return CreateLayoutInternal(combined, typeface, overrides);
+    }
+
+    /// <summary>Maps a segment kind to its modern-flavor styling (SPEC §21.2 palette).</summary>
+    private (IBrush? Foreground, IBrush? Background, TextDecorationCollection? Decorations) StyleFor(
+        ImeSegmentKind kind) => kind switch
+    {
+        // The active clause: coloured background, contrasting text, no underline.
+        ImeSegmentKind.ConvertedTarget or ImeSegmentKind.TargetNotConverted =>
+            (TargetClauseForeground ?? Foreground, TargetClauseBackground, null),
+
+        // Erroneous input keeps the composition colour but is marked with a broken underline.
+        ImeSegmentKind.InputError =>
+            (CompositionForeground ?? Foreground, null, ErrorDecoration()),
+
+        // Input and Converted: coloured text, nothing else. This is also the degrade path for
+        // IMEs that report no attributes at all (KO jamo, ZH pinyin before conversion).
+        _ => (CompositionForeground ?? Foreground, null, null),
+    };
+
+    /// <summary>
+    /// A dashed underline standing in for the squiggle the IME asks for; Avalonia's
+    /// <see cref="TextDecoration"/> has no squiggle style. Cached per brush.
+    /// </summary>
+    private TextDecorationCollection? ErrorDecoration()
+    {
+        var brush = InputErrorUnderline;
+        if (brush is null)
+        {
+            return TextDecorations.Underline;
+        }
+
+        if (_errorDecoration is not null && ReferenceEquals(_errorDecorationBrush, brush))
+        {
+            return _errorDecoration;
+        }
+
+        _errorDecorationBrush = brush;
+        _errorDecoration =
+        [
+            new TextDecoration
+            {
+                Location = TextDecorationLocation.Underline,
+                Stroke = brush,
+                StrokeThickness = 1,
+                StrokeDashArray = new AvaloniaList<double> { 2, 2 },
+            },
+        ];
+
+        return _errorDecoration;
     }
 
     // Mirrors TextPresenter.GetCombinedText (private there): insert the preedit at the caret.
@@ -119,11 +207,10 @@ public class ImeTextPresenter : TextPresenter
             return preeditText;
         }
 
-        var sb = new System.Text.StringBuilder(text.Length + preeditText.Length);
-        sb.Append(text.Substring(0, caretIndex));
-        sb.Insert(caretIndex, preeditText);
-        sb.Append(text.Substring(caretIndex));
-        return sb.ToString();
+        return string.Concat(
+            text.AsSpan(0, caretIndex),
+            preeditText,
+            text.AsSpan(caretIndex));
     }
 
     // Mirrors TextPresenter.CreateTextLayoutInternal (private there).
@@ -134,8 +221,11 @@ public class ImeTextPresenter : TextPresenter
         var maxWidth = constraint.Width <= 0 ? double.PositiveInfinity : constraint.Width;
         var maxHeight = constraint.Height <= 0 ? double.PositiveInfinity : constraint.Height;
 
-        return new TextLayout(text, typeface, FontFeatures, FontSize, Foreground, TextAlignment,
+        // NOTE (Avalonia 12): TextLayout's ctor dropped fontFeatures from position 3;
+        // it is now a trailing named parameter.
+        return new TextLayout(text, typeface, FontSize, Foreground, TextAlignment,
             TextWrapping, maxWidth: maxWidth, maxHeight: maxHeight, textStyleOverrides: overrides,
-            flowDirection: FlowDirection, lineHeight: LineHeight, letterSpacing: LetterSpacing);
+            flowDirection: FlowDirection, lineHeight: LineHeight, letterSpacing: LetterSpacing,
+            fontFeatures: FontFeatures);
     }
 }

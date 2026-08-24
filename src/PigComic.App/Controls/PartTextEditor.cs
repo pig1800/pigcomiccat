@@ -48,11 +48,19 @@ public class PartTextEditor : TextBox
     private bool _multiLine;
     private readonly Ime.ImeTextBoxInputMethodClient _imClient = new();
     private TextPresenter? _presenter;
+    private TopLevel? _monitoredTopLevel;
 
     public event EventHandler? ConfirmRequested;
 
     /// <summary>Checklist instrumentation: every confirm fired while composing would show here.</summary>
     public long ConfirmCount { get; private set; }
+
+    /// <summary>
+    /// The templated presenter, exposed so the <c>--smoke</c> self-check can verify that the
+    /// PartTextEditorTheme actually applied and produced an <see cref="Ime.ImeTextPresenter"/>.
+    /// Null until <see cref="OnApplyTemplate"/> runs.
+    /// </summary>
+    internal TextPresenter? TemplatePresenter => _presenter;
 
     /// <summary>
     /// When true (default), Enter fires <see cref="ConfirmRequested"/> and is marked handled
@@ -124,7 +132,25 @@ public class PartTextEditor : TextBox
         }
     }
 
-    protected override void OnGotFocus(GotFocusEventArgs e)
+    protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
+    {
+        base.OnAttachedToVisualTree(e);
+
+        // Install the in-message IMM32 clause capture for this window (PLAN M2.6).
+        // Reference counted, so several editors in one window share one WndProc hook.
+        _monitoredTopLevel = TopLevel.GetTopLevel(this);
+        Ime.ImeMessageMonitor.Attach(_monitoredTopLevel);
+    }
+
+    protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
+    {
+        base.OnDetachedFromVisualTree(e);
+
+        Ime.ImeMessageMonitor.Detach(_monitoredTopLevel);
+        _monitoredTopLevel = null;
+    }
+
+    protected override void OnGotFocus(FocusChangedEventArgs e)
     {
         base.OnGotFocus(e);
         if (_presenter is not null)
@@ -133,7 +159,7 @@ public class PartTextEditor : TextBox
         }
     }
 
-    protected override void OnLostFocus(RoutedEventArgs e)
+    protected override void OnLostFocus(FocusChangedEventArgs e)
     {
         base.OnLostFocus(e);
         _imClient.SetPresenter(null, null);

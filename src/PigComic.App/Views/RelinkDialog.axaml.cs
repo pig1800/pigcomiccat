@@ -1,5 +1,6 @@
 using Avalonia.Controls;
 using Avalonia.Interactivity;
+using PigComic.App.Services;
 
 namespace PigComic.App.Views;
 
@@ -64,16 +65,11 @@ public partial class RelinkDialog : Avalonia.Controls.Window
 
     private async Task BrowseRow(RelinkRow row, TextBlock text)
     {
-        var dialog = new OpenFileDialog
+        var picked = await FilePickers.OpenFileAsync(
+            this, $"Locate {row.FileName}", "PigComic chapter", "pcml").ConfigureAwait(true);
+        if (picked is not null)
         {
-            Title = $"Locate {row.FileName}",
-            AllowMultiple = false,
-            Filters = { new FileDialogFilter { Name = "PigComic chapter", Extensions = { "pcml" } } },
-        };
-        var picked = await dialog.ShowAsync(this).ConfigureAwait(true);
-        if (picked is { Length: > 0 })
-        {
-            row.ResolvedPath = picked[0];
+            row.ResolvedPath = picked;
             text.Text = $"{row.FileName}  →  {row.ResolvedPath}";
             UpdateOk();
         }
@@ -81,10 +77,12 @@ public partial class RelinkDialog : Avalonia.Controls.Window
 
     private void UpdateOk() => OkButton.IsEnabled = _rows.All(r => r.IsResolved);
 
-    private void OnSearchFolderClick(object? sender, RoutedEventArgs e)
+    private async void OnSearchFolderClick(object? sender, RoutedEventArgs e)
     {
-        var dialog = new OpenFolderDialog { Title = "Search folder for missing files" };
-        if (dialog.ShowAsync(this).GetAwaiter().GetResult() is not { } folder)
+        // Must stay async: blocking the UI thread on a picker deadlocks in Avalonia 12.
+        var folder = await FilePickers
+            .OpenFolderAsync(this, "Search folder for missing files").ConfigureAwait(true);
+        if (folder is null)
         {
             return;
         }

@@ -1,5 +1,6 @@
 using Avalonia.Controls;
 using Avalonia.Interactivity;
+using PigComic.App.Services;
 using PigComic.Core.Adapters;
 using PigComic.Core.Export;
 using PigComic.Core.Exchange;
@@ -95,16 +96,11 @@ public partial class ProjectView : Avalonia.Controls.Window
 
     private async void OnAddChapterClick(object? sender, RoutedEventArgs e)
     {
-        var dialog = new OpenFileDialog
+        var picked = await FilePickers.OpenFileAsync(
+            this, "Add .pcml chapter", "PigComic chapter", "pcml").ConfigureAwait(true);
+        if (picked is not null)
         {
-            Title = "Add .pcml chapter",
-            AllowMultiple = false,
-            Filters = { new FileDialogFilter { Name = "PigComic chapter", Extensions = { "pcml" } } },
-        };
-        var picked = await dialog.ShowAsync(this).ConfigureAwait(true);
-        if (picked is { Length: > 0 })
-        {
-            _project?.AddChapter(picked[0]);
+            _project?.AddChapter(picked);
             SaveProject();
         }
     }
@@ -199,14 +195,9 @@ public partial class ProjectView : Avalonia.Controls.Window
             return;
         }
 
-        var dialog = new OpenFileDialog
-        {
-            Title = $"Import {caption}",
-            AllowMultiple = false,
-            Filters = { new FileDialogFilter { Name = caption, Extensions = { ext.TrimStart('.') } } },
-        };
-        var picked = await dialog.ShowAsync(this).ConfigureAwait(true);
-        if (picked is not { Length: > 0 } selected)
+        var picked = await FilePickers.OpenFileAsync(
+            this, $"Import {caption}", caption, ext.TrimStart('.')).ConfigureAwait(true);
+        if (picked is null)
         {
             return;
         }
@@ -219,12 +210,12 @@ public partial class ProjectView : Avalonia.Controls.Window
             if (isTm)
             {
                 ITmExchange exchange = ext == ".tmx" ? new TmxExchange() : new TmXlsxExchange();
-                report = await exchange.ImportAsync(selected[0], opened.Tm, CancellationToken.None);
+                report = await exchange.ImportAsync(picked, opened.Tm, CancellationToken.None);
             }
             else
             {
                 ITbExchange exchange = ext == ".tbx" ? new TbxExchange() : new TbXlsxExchange();
-                report = await exchange.ImportAsync(selected[0], opened.Tb, CancellationToken.None);
+                report = await exchange.ImportAsync(picked, opened.Tb, CancellationToken.None);
             }
 
             await ContentDialog.AskAsync(this, $"Import {caption}", ReportText(report), "OK", null);
@@ -238,13 +229,8 @@ public partial class ProjectView : Avalonia.Controls.Window
             return;
         }
 
-        var dialog = new SaveFileDialog
-        {
-            Title = $"Export {caption}",
-            DefaultExtension = ext.TrimStart('.'),
-            Filters = { new FileDialogFilter { Name = caption, Extensions = { ext.TrimStart('.') } } },
-        };
-        var path = await dialog.ShowAsync(this).ConfigureAwait(true);
+        var path = await FilePickers.SaveFileAsync(
+            this, $"Export {caption}", caption, ext.TrimStart('.')).ConfigureAwait(true);
         if (path is null)
         {
             return;

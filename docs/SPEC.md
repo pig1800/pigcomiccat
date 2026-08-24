@@ -24,7 +24,7 @@ PigComic is a single-user desktop CAT (computer-assisted translation) tool speci
 
 **Stack (fixed)**
 - .NET 8, C# (nullable enabled, implicit usings).
-- Avalonia 11 + CommunityToolkit.Mvvm (MVVM), Microsoft.Extensions.DependencyInjection for service wiring.
+- **Avalonia 12.1.1** + CommunityToolkit.Mvvm (MVVM), Microsoft.Extensions.DependencyInjection for service wiring. (Upgraded from 11.2.5 on 2026-08-23 — D-41. SkiaSharp pinned to 3.119.4 to match. See `CLAUDE.md` "Avalonia 12 conventions" for the API differences that break 11-era code.)
 - SQLite via `Microsoft.Data.Sqlite` for `tm.db` / `tb.db`.
 - `ClosedXML` for XLSX (same library as the existing tools), `SkiaSharp` (via Avalonia) for image work.
 - xunit for tests. Every `PigComic.Core` feature ships with tests in the same milestone.
@@ -830,6 +830,25 @@ Acceptance (M2): synthetic 1000×40000 JPEG and PNG strips scroll end-to-end wit
 
 ## 21. IME gate (blocking early task)
 
+### 21.0 Composition rendering architecture (Avalonia 12.1.1)
+
+Responsibility split — do not re-litigate this without checking upstream again (D-40, D-41):
+
+| Data | Who provides it | Notes |
+|---|---|---|
+| Preedit string (`GCS_COMPSTR`) | Avalonia | via `TextInputMethodClient.SetPreeditText` |
+| In-composition caret (`GCS_CURSORPOS`) | **Avalonia 12.1.0+** | via the `cursorPos` parameter (upstream PR #21632). PigComic must **not** read this from IMM32 — doing so was the old caret-stuck-at-0 bug, because `GCS_CURSORPOS` returns its value as the function's return value, not through the buffer. |
+| Conversion clauses + attributes (`GCS_COMPCLAUSE` / `GCS_COMPATTR`) | **PigComic** | Not forwarded by any Avalonia release (upstream issue #21647; prototype PR #21648 unmerged). Captured **in-message** by `Ime/ImeMessageMonitor` — a `Win32Properties.AddWndProcHookCallback` hook that snapshots the fields flagged in `WM_IME_COMPOSITION`'s lParam synchronously on the message stack (the IMM32 contract: composition info may vanish after `ImmReleaseContext`; reading later broke ATOK). The client consumes the snapshot and never calls IMM32 itself. Windows-guarded. (PLAN M2.6; full rationale in `docs/IME_MODERN_COMPOSITION.md` §2.) |
+| Display-attribute colors (TSF `TF_DISPLAYATTRIBUTE`) | **PigComic, M-TSF track** | Full-fidelity path: a per-control `ITextStoreACP` store renders TIP-specified colors (ATOK user palette, exact Notepad parity) and replaces the IMM32 path when enabled. Design: `docs/IME_MODERN_COMPOSITION.md` §4–5. |
+
+Rendering path: `PartTextEditor` (installs `ImeTextBoxInputMethodClient` on the Tunnel route)
+→ client combines Avalonia's caret with the captured clause snapshot into an `ImeComposition`
+→ `ImeTextPresenter` renders per-segment in the **modern flavor** (§21.2). Any IME without
+clause data (KO jamo, ZH pre-conversion) degrades to whole-preedit `Input` styling.
+Composition never mutates committed document text.
+
+### 21.1 Manual gate checklist
+
 Before any editor UI milestone (M5+) starts, verify in a throwaway window (kept as a debug menu item) using **the same control type the target editor will use**:
 
 Checklist (Windows, run manually with both Microsoft IME Japanese and Korean):
@@ -838,8 +857,37 @@ Checklist (Windows, run manually with both Microsoft IME Japanese and Korean):
 3. KO: 2-beolsik jamo composition assembles syllables in place; committing/backspace behaves like Notepad.
 4. Shift+Enter during composition does not break composition state.
 5. IME on/off toggling (Alt+`~` / Han/Eng key) works focused in the control.
+6. **Composition caret + modern clause rendering together** (§21.2): while composing, a caret is visible *inside* the preedit and tracks arrow-key movement (JA and ZH); the composition text renders colored per §21.2; after pressing Space to convert, the active henkan clause shows the colored background and it moves as the segment selection changes (test with **both MS-IME JA and ATOK**).
 
-Record results in `docs/IME_REPORT.md` (pass/fail per item, Avalonia version, workarounds). **If Avalonia's `TextBox` fails**: evaluate `TextInputMethodClient` custom implementation; if still inadequate, STOP and surface as an architecture decision (options: WPF interop island for the editor, or different framework) — do not proceed to M5.
+Record results in `docs/IME_REPORT.md` (pass/fail per item, Avalonia version, workarounds). The custom-client escalation (§21.0) has already been taken; **if items 1–5 still fail on it**, STOP and surface as an architecture decision (options: WPF interop island for the editor, or different framework) — do not proceed to M5. If only item 6's *clause-rendering* half fails while everything else passes, that is not an architecture failure: follow the M2.6 diagnostics branch (`docs/IME_MODERN_COMPOSITION.md` §5) and consult the owner (the caret half is upstream-supplied and must work).
+
+### 21.2 Modern-flavor composition rendering (owner directive 2026-08-23, D-43)
+
+**Control rule (normative).** Every editable text field in PigComic is a `PartTextEditor`.
+It is the only control wired to the IME stack — `ImeTextBoxInputMethodClient` (installed on
+the tunnel route), the `ImeTextPresenter` supplied by `PartTextEditorTheme`, and the
+`ImeMessageMonitor` hook it attaches on entering the visual tree. A bare `TextBox` gets
+Avalonia's stock rendering instead: no clause highlight, no modern palette. Any milestone
+that adds a field where a user types — target parts, inline source editing, the character
+box, notes, find/replace, the LLM prompt/memory editors — uses `PartTextEditor`
+(`ConfirmOnEnter="False"` when Enter must reach a dialog's default button). Sanctioned
+exceptions: the comparison `TextBox` in the IME gate window, and the debug spike's path
+field. `PigComic.App.exe --smoke` enforces this.
+
+The editor renders composition like Win11 Notepad / current Excel — **not** the legacy
+thin/thick-underline flavor (memoQ, VSCode):
+
+- Segment model: `ImeSegment(Start, Length, Kind)` with `Kind` ∈ `Input, Converted,
+  ConvertedTarget, TargetNotConverted, InputError` — names mirror upstream Avalonia's
+  `TextInputDecorationKind` (PR #20890) for future convergence (D-44). Segments derive from
+  IMM32 `GCS_COMPATTR` runs today and TSF decorations on the M-TSF track.
+- Style mapping via theme resources (values: the palette table in
+  `docs/IME_MODERN_COMPOSITION.md` §6): composition text is **colored, not underlined**;
+  the active henkan clause (`ConvertedTarget`) gets a **colored background**; the caret
+  stays visible over every segment style.
+- Fidelity rule (M-TSF): when the TIP specifies explicit `TF_CT_COLORREF` colors, render
+  them verbatim (this is how ATOK users get their own configured colors); the theme
+  palette applies only when the TIP declines (`TF_CT_NONE`/`TF_CT_SYSCOLOR`).
 
 ---
 
