@@ -1,6 +1,19 @@
 # PigComic
 
-Desktop CAT tool for comic/manga translation. **Read `docs/SPEC.md` before writing any code** — it is the single source of truth. Work strictly from the task list in `docs/PLAN.md`, one task per session, in order. If the spec is silent on something you need, do NOT guess: add it to `docs/OPEN_QUESTIONS.md` and stop.
+Desktop CAT tool for comic/manga translation.
+
+> ## Start here, every session
+> 1. **Read the `## STATUS` block at the top of `docs/PLAN.md`.** It states what is already
+>    built, what the verified build/test/smoke baseline is, and which task is next. The
+>    markdown docs are the authoritative record of project state — treat them, not your
+>    guesses and not leftover context, as the truth.
+> 2. **As of 2026-08-24 there is no code task available**: M0–M4 and the IME work (M2.6/M2.7)
+>    are done, and M5–M11 are blocked behind an owner-run IME gate (`docs/IME_REPORT.md`).
+>    If that is still the case when you read this, say so and stop rather than inventing work
+>    or re-running finished milestones.
+> 3. Then read `docs/SPEC.md` — the single source of truth for behavior — before writing code.
+
+Work strictly from the task list in `docs/PLAN.md`, one task per session, in order, starting from the first task the STATUS block does **not** mark done. If the spec is silent on something you need, do NOT guess: add it to `docs/OPEN_QUESTIONS.md` and stop.
 
 ## Stack
 - .NET 8, C# (nullable enabled, implicit usings, file-scoped namespaces, 4-space indent).

@@ -1,5 +1,36 @@
 # PigComic — Implementation Plan
 
+## STATUS — READ THIS BEFORE ANYTHING ELSE (2026-08-24, commit `8d7e6d9`)
+
+**There is currently no code task available. Do not start one.** Every task an executing
+model can do is finished; the project is parked on a gate only the owner can clear.
+
+| Milestone | State |
+|---|---|
+| M0 scaffold · M1 `.pcml` core · M2.1–M2.4 tiled canvas | ✅ **DONE — do not redo** |
+| M3 TM/TB engine + exchange | ✅ **DONE — do not redo** |
+| M4 project model, main view, dialogs, relink | ✅ **DONE — do not redo** |
+| M2.6 in-message IMM32 clause capture · M2.7 modern IME rendering | ✅ code done; owner has confirmed the editor works, formal gate record still outstanding |
+| **M2.5 IME gate** | ⛔ **OPEN — owner-run. Blocks everything below.** |
+| M5 – M11 | ⛔ blocked by the M2.5 gate |
+| M-TSF (TSF text store) | ⛔ not started; needs M2.6 diagnostics + the owner's Q7 decision |
+
+Verified baseline at that commit: `dotnet build PigComic.sln` clean, **213/213 tests**,
+**`--smoke` 16/16**. If those numbers differ when you start, something regressed — find out
+what before touching anything else.
+
+**The next action belongs to the owner, not to you.** Per SPEC §21.1 they must run the 6-item
+IME checklist (MS-IME Japanese, ATOK, MS-IME Korean) plus the M2.6 diagnostics capture, and
+record it in `docs/IME_REPORT.md`.
+
+**If you are an executing model:** say that the gate needs the owner, and stop. Do not re-run
+finished milestones. Do not start M5 because "it builds". Do not fill in the gate table or the
+diagnostics table yourself — those results can only come from a real IME session on Windows,
+and inventing them would defeat the gate's entire purpose. **Once `docs/IME_REPORT.md` records
+6/6 PASS, the next task is M5.1 and nothing earlier.**
+
+---
+
 Read `docs/SPEC.md` first. Every behavior detail, schema, algorithm, and test table lives there; tasks below cite spec sections (§) instead of repeating them. **Do not invent behavior — if the spec is silent, stop and add an entry to `docs/OPEN_QUESTIONS.md` rather than guessing.**
 
 > **Stack note (2026-08-23):** the app runs on **Avalonia 12.1.1**, not 11.x (D-41). Milestones M0–M4 below were written and executed against 11.2.5 and have since been migrated; their task text is kept as the historical record, but **any UI code you write now must follow the "Avalonia 12 conventions" section of `CLAUDE.md`**. 11-era snippets (`OpenFileDialog`, `GotFocusEventArgs`, `Checked=`, un-typed `DataTemplate`s) will not compile. When a task below names one of those APIs, use the 12 equivalent and note it in your summary.
@@ -17,7 +48,7 @@ Milestone order is risk-ordered and fixed. **M2 is a gate: M5–M11 must not sta
 
 ---
 
-## M0 — Solution scaffold
+## M0 — Solution scaffold ✅ DONE (do not redo)
 
 ### M0.1 Create solution and projects
 - **Files**: `PigComic.sln`, `src/PigComic.Core/PigComic.Core.csproj`, `src/PigComic.App/PigComic.App.csproj`, `tests/PigComic.Core.Tests/PigComic.Core.Tests.csproj`, `.gitignore` (Visual Studio template), `.editorconfig` (dotnet defaults, 4-space indent, file-scoped namespaces).
@@ -31,7 +62,7 @@ Milestone order is risk-ordered and fixed. **M2 is a gate: M5–M11 must not sta
 
 ---
 
-## M1 — Core data model + `.pcml` read/write
+## M1 — Core data model + `.pcml` read/write ✅ DONE (do not redo)
 
 ### M1.1 Domain types
 - **Files**: `src/PigComic.Core/Domain/` — `BubbleKind.cs`, `BubbleStatus.cs`, `PixelRect.cs`, `TargetPart.cs`, `Bubble.cs`, `Page.cs`, `Chapter.cs`.
@@ -65,23 +96,23 @@ Milestone order is risk-ordered and fixed. **M2 is a gate: M5–M11 must not sta
 
 ---
 
-## M2 — Risk spikes: tiled canvas + IME gate (GATE for M5+)
+## M2 — Risk spikes: tiled canvas + IME gate (GATE for M5+) — M2.1–M2.4 ✅ DONE · M2.6/M2.7 ✅ code done · **M2.5 gate ⛔ OPEN (owner-run)**
 
-### M2.1 Tile math (Core, no Skia)
+### M2.1 Tile math (Core, no Skia) ✅ DONE
 - **Files**: `src/PigComic.Core/Imaging/TilePyramid.cs`, `TileKey.cs`, `LruByteCache.cs` (generic, byte-budgeted).
 - **Behavior**: SPEC §20 pyramid math: level count for given dims (halve until ≤1024, min 2 downsampled), tile grid per level (512), `VisibleTiles(viewportRect, zoom, margin=1)` and `SelectLevel(zoom)`; LRU cache with byte accounting + eviction callback.
 - **Acceptance**: `TilePyramidTests` — for 1000×40000 the pyramid has exactly 7 levels (dims 1000×40000, 500×20000, 250×10000, 125×5000, 63×2500, 32×1250, 16×625 — generation stops at level 6, the first with max dimension ≤ 1024); level 0 tile grid is 2×79 (512 px tiles); `SelectLevel(zoom=0.24)` returns level 2 (smallest level scale ≥ 0.24 is 0.25); LRU: inserting past the byte budget evicts oldest-touched first.
 
-### M2.2 Synthetic strip generator
+### M2.2 Synthetic strip generator ✅ DONE
 - **Files**: `tests/PigComic.Core.Tests/Tools/StripImageGenerator.cs` + a `dotnet run`-able entry in `src/PigComic.App` debug menu later; generator writes numbered-band JPEG and PNG strips (1000×40000, text "y=NNNN" every 500 px) to a given path using SkiaSharp — put the generator in App project (`src/PigComic.App/Rendering/StripImageGenerator.cs`) since Core has no Skia.
 - **Acceptance**: generated files exist, correct dimensions (decode headers), JPEG < 30 MB.
 
-### M2.3 Background tile decoder
+### M2.3 Background tile decoder ✅ DONE
 - **Files**: `src/PigComic.App/Rendering/TileDecoder.cs`, `DecodeQueue.cs`.
 - **Behavior**: SPEC §20 decode pipeline: 2 worker threads, priority queue by viewport distance, cancellation of stale requests; JPEG subset decode (`SKCodecOptions` with subset) for level 0, scaled decode for higher levels; PNG banded incremental decode (fallback rule in §20 if infeasible — record in DECISIONS).
 - **Acceptance**: unit test (App project test allowed here or manual harness): request 20 tiles of the synthetic JPEG, all arrive < 3 s, none allocates a full-image bitmap (assert via decode API used); PNG path yields pixel-correct tiles (compare a tile against a reference crop).
 
-### M2.4 TiledImageControl + spike window
+### M2.4 TiledImageControl + spike window ✅ DONE
 - **Files**: `src/PigComic.App/Controls/TiledImageControl.cs` (custom `ICustomDrawOperation`), `src/PigComic.App/Views/SpikeWindow.axaml(.cs)`, menu entry in main window (debug builds).
 - **Behavior**: SPEC §20 draw rules (resident tiles ± margin, coarse-level placeholder upscale, gray fallback, invalidate on arrival); wheel scroll, Ctrl+wheel zoom at cursor, fit-width; FPS overlay (frame time ring buffer).
 - **Acceptance** (manual, record numbers in `docs/IME_REPORT.md` sibling file `docs/SPIKE_REPORT.md`): scroll the 1000×40000 JPEG and PNG top-to-bottom fast: overlay reports ≥55 fps sustained; Task Manager working set < 900 MB; zoom in/out smooth.
@@ -108,7 +139,7 @@ Milestone order is risk-ordered and fixed. **M2 is a gate: M5–M11 must not sta
 
 ---
 
-## M3 — TM/TB engine + exchange
+## M3 — TM/TB engine + exchange ✅ DONE (do not redo)
 
 ### M3.1 Normalizer
 - **Files**: `src/PigComic.Core/Tm/Normalizer.cs` (`Normalize`, `NormLength`, `LangClass`).
@@ -157,7 +188,7 @@ Milestone order is risk-ordered and fixed. **M2 is a gate: M5–M11 must not sta
 
 ---
 
-## M4 — Project model + main view + relink
+## M4 — Project model + main view + relink ✅ DONE (do not redo)
 
 ### M4.1 Project files (Core)
 - **Files**: `src/PigComic.Core/Project/ProjectFile.cs` (`project.json` via `JsonNode` round-trip per D-07), `CharacterList.cs` (`characters.json`), `ProjectSettings.cs` (typed accessors with SPEC §6.2 defaults), `ProjectFolder.cs` (create-new: folder layout §6.1, empty TM/TB via SqliteInit).
@@ -195,7 +226,7 @@ Milestone order is risk-ordered and fixed. **M2 is a gate: M5–M11 must not sta
 
 ---
 
-## M5 — Editor: segment list + target editor + confirm loop + TM/TB box
+## M5 — Editor: segment list + target editor + confirm loop + TM/TB box ⛔ BLOCKED by the M2.5 gate
 
 ### M5.1 Editor shell + chapter open
 - **Files**: `src/PigComic.App/Views/EditorView.axaml(.cs)`, `ViewModels/EditorViewModel.cs`, `Services/ChapterSession.cs` (owns PcmlDocument, dirty flag, save).

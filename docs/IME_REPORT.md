@@ -1,10 +1,19 @@
 # PigComic — IME Gate Report (M2.5)
 
 **Gate rule (SPEC §21 / PLAN M2)**: M5–M11 editor work must NOT start until all 6
-items below are recorded **PASS** on Windows with both Microsoft IME Japanese and
-Korean, using the same control type as the target editor (`PartTextEditor`).
+items below are recorded **PASS** on Windows, using the same control type as the target
+editor (`PartTextEditor`). Item 6 additionally has a per-IME table covering **MS-IME
+Japanese, ATOK, MS Pinyin and MS-IME Korean** (the 2026-08-23 defect behaved differently
+per IME, so one combined verdict would hide it).
 
 **Stack under test:** Avalonia 12.1.1, Windows. (Upgraded from 11.2.5 on 2026-08-23 — D-41.)
+
+> **Current state (2026-08-24):** the gate is **OPEN — 0/6 recorded**, and it is the only
+> thing blocking M5. The code side is finished and verified (build clean, 213/213 tests,
+> `--smoke` 16/16). The owner has reported informally that the target editor and the modern
+> composition rendering work as expected in normal use, but that is **not** a substitute for
+> the run below: the checkboxes and the diagnostics tables must be filled from real IME
+> sessions. Nobody but the owner can produce them — an AI session must not tick them.
 
 ## Spike findings (recorded 2026-08-22, before the manual run)
 
@@ -91,12 +100,16 @@ caret lost) and no active-segment highlight could be drawn (JA henkan word not s
    it shipped in 12.1.0 and was never backported to 11.x. PigComic no longer reads that flag
    itself — which also deleted an earlier caret-stuck-at-0 bug in our own IMM32 code.
 2. **Henkan highlight — still PigComic's own code**, because no Avalonia release forwards
-   clause data (upstream issue #21647 open; prototype PR #21648 unmerged). The custom
-   `Ime/ImeTextBoxInputMethodClient` reads `GCS_COMPCLAUSE`/`GCS_COMPATTR` from the focused
-   HWND's IMM context and feeds a clause-aware `Ime/ImeTextPresenter`:
-   - the active henkan clause (ATTR_TARGET_CONVERTED / _NOTCONVERTED) is highlighted
-     reverse-video, other clauses underlined;
-   - KO / no-clause IMEs degrade to the base flat-underline rendering;
+   clause data (upstream issue #21647 open; prototype PR #21648 unmerged). Superseded on
+   2026-08-24 by PLAN M2.6/M2.7: `Ime/ImeMessageMonitor` now captures
+   `GCS_COMPCLAUSE`/`GCS_COMPATTR` **inside the WM_IME_COMPOSITION message** (reading them
+   later was why ATOK showed nothing), and `Ime/ImeTextPresenter` renders the result in the
+   modern flavor (SPEC §21.2):
+   - composition text is drawn in colour, not underlined;
+   - the active henkan clause (ATTR_TARGET_CONVERTED / _NOTCONVERTED) gets a coloured
+     background that follows the segment as ←/→ move it;
+   - KO / ZH / no-clause IMEs degrade to the whole preedit styled as plain input, with the
+     caret — supplied by Avalonia — unaffected;
    - the committed document text is never mutated by composition.
 
 `PartTextEditor` installs this client on the Tunnel route (handledEventsToo, marks Handled)

@@ -12,7 +12,7 @@ Every modern IME on Windows 10/11 (new MS-IME, ATOK Passport, Pinyin) is a **TSF
 
 | Door | Who uses it | What the app receives | Typical look |
 |---|---|---|---|
-| **IMM32 via CUAS** (compat layer, always on since Vista) | PigComic today; Chromium until ~2020; classic editors | `WM_IME_COMPOSITION` + `ImmGetCompositionString`: `GCS_COMPSTR/CURSORPOS/COMPCLAUSE/COMPATTR` — clause boundaries + per-char `ATTR_*` bytes, **no colors** | App maps ATTR→underline thin/thick (or our reverse-video) — the "classic flavor" |
+| **IMM32 via CUAS** (compat layer, always on since Vista) | PigComic today; Chromium until ~2020; classic editors | `WM_IME_COMPOSITION` + `ImmGetCompositionString`: `GCS_COMPSTR/CURSORPOS/COMPCLAUSE/COMPATTR` — clause boundaries + per-char `ATTR_*` bytes, **no colors** | App maps ATTR→its own styling: underline thin/thick is the "classic flavor"; PigComic maps them to the modern palette instead (§6) |
 | **TSF text store** (`ITextStoreACP`) | Win11 Notepad (RichEdit), Office, Windows Terminal, WPF, Chromium/Firefox now | Per-range **`TF_DISPLAYATTRIBUTE`**: attr kind + `crText`/`crBk`/`crLine` colors + `lsStyle` underline style — the TIP *specifies its own styling* | Render the TIP's colors faithfully → the "modern flavor" (blue text, aqua target background) |
 
 Three important nuances discovered:
