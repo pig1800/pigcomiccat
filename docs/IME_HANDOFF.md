@@ -23,7 +23,7 @@ already cost two sessions.
 - **Now**: the project runs **Avalonia 12.1.1**, where the caret half is fixed upstream. The
   custom IME client survives only to add **conversion-clause highlighting**, which no
   Avalonia release provides.
-- **Build/tests/smoke**: green — 213/213 tests, `--smoke` 15/15.
+- **Build/tests/smoke**: green — 213/213 tests, `--smoke` 17/17.
 - **The M2.5 IME gate is still NOT passed.** It needs a manual run with real MS IME sessions
   (SPEC §21.1); only the owner can do it. **M5+ stays blocked until `docs/IME_REPORT.md`
   records 6/6 PASS.**
@@ -75,9 +75,19 @@ All under `src/PigComic.App/`:
 **Tests**: `ImeCompositionTests.cs` (7 — clause mapping, caret clamping), `ImeSnapshotTests.cs`
 (12 — lParam gating, cross-message retention, clause normalisation, a full JA conversion
 sequence), `ImeSegmentTests.cs` (17 — attribute→kind mapping, run grouping, clause-split
-edges, degrade paths). UI behaviour is covered by `--smoke` (15 checks) and the manual gate.
+edges, degrade paths). UI behaviour is covered by `--smoke` (17 checks) and the manual gate.
 
 ## 5. Bugs already fixed — do not reintroduce
+
+0. **Never pass a finite height to the composition TextLayout.** `ImeTextPresenter` clones
+   `TextPresenter.CreateTextLayoutInternal`; the base measures with
+   `(width, PositiveInfinity)`. Passing `Bounds.Height` makes `TextLayout` silently drop
+   lines that do not fit — the multi-line editor's last line went blank, its text vanished
+   as you typed, the caret stranded on the line above and the candidate window followed it
+   down. `--smoke` reproduces this exact case (D-46).
+0b. **The client must raise `CursorRectangleChanged`.** Avalonia re-reads `CursorRectangle`
+   only when told; without subscribing to `TextPresenter.CaretBoundsChanged` the candidate
+   window is placed once and then stays put while the caret moves away (D-46).
 
 1. **Caret stuck at position 0.** The old client read `GCS_CURSORPOS` through `ReadBytes`,
    i.e. with buffer semantics. `ImmGetCompositionString(hIMC, GCS_CURSORPOS, NULL, 0)`
@@ -118,6 +128,6 @@ edges, degrade paths). UI behaviour is covered by `--smoke` (15 checks) and the 
 ```
 dotnet build PigComic.sln
 dotnet test                                                   # expect 213/213
-src/PigComic.App/bin/Debug/net8.0/PigComic.App.exe --smoke     # expect 15/15, exit 0
+src/PigComic.App/bin/Debug/net8.0/PigComic.App.exe --smoke     # expect 17/17, exit 0
 dotnet run --project src/PigComic.App                          # Debug menu → IME gate test
 ```

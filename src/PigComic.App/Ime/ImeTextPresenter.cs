@@ -217,9 +217,19 @@ public class ImeTextPresenter : TextPresenter
     private TextLayout CreateLayoutInternal(string? text, Typeface typeface,
         IReadOnlyList<ValueSpan<TextRunProperties>>? overrides)
     {
-        var constraint = Bounds.Size;
-        var maxWidth = constraint.Width <= 0 ? double.PositiveInfinity : constraint.Width;
-        var maxHeight = constraint.Height <= 0 ? double.PositiveInfinity : constraint.Height;
+        var maxWidth = Bounds.Width <= 0 ? double.PositiveInfinity : Bounds.Width;
+
+        // The height must NEVER constrain the layout. TextLayout silently DROPS whole lines
+        // that do not fit within maxHeight, and passing Bounds.Height here is what broke the
+        // multi-line editor: composing on the last line laid out 4 lines as 3, discarded 13
+        // characters, stranded the caret at the end of the previous line, and pinned the
+        // candidate window to the last surviving line. Single-line editors never showed it
+        // because one line always fits, and zh-CN mostly escaped it because narrow ASCII
+        // pinyin does not push the last line past the bottom the way wide kana/hangul do.
+        // The base TextPresenter measures with (width, PositiveInfinity) for exactly this
+        // reason — confirmed by reading its private _constraint field, which holds
+        // "382, Infinity" for our multi-line editor while Bounds.Size is "382, 68".
+        const double maxHeight = double.PositiveInfinity;
 
         // NOTE (Avalonia 12): TextLayout's ctor dropped fontFeatures from position 3;
         // it is now a trailing named parameter.

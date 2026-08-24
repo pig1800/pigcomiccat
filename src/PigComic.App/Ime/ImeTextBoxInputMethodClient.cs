@@ -124,6 +124,8 @@ public sealed class ImeTextBoxInputMethodClient : TextInputMethodClient
 
         if (_presenter is not null)
         {
+            _presenter.CaretBoundsChanged -= OnCaretBoundsChanged;
+
             if (_presenter is ImeTextPresenter ime)
             {
                 ime.Composition = null;
@@ -136,9 +138,19 @@ public sealed class ImeTextBoxInputMethodClient : TextInputMethodClient
 
         _presenter = presenter;
 
+        if (_presenter is not null)
+        {
+            // Avalonia only re-reads CursorRectangle when the client says it changed. Without
+            // this subscription the candidate window is placed once, when the client is
+            // installed, and then stays frozen there while the caret moves away from it.
+            _presenter.CaretBoundsChanged += OnCaretBoundsChanged;
+        }
+
         RaiseTextViewVisualChanged();
         RaiseCursorRectangleChanged();
     }
+
+    private void OnCaretBoundsChanged(object? sender, EventArgs e) => RaiseCursorRectangleChanged();
 
     public override void SetPreeditText(string? preeditText) => SetPreeditText(preeditText, null);
 
@@ -299,8 +311,12 @@ public sealed class ImeTextBoxInputMethodClient : TextInputMethodClient
     // the caret's public hit-test so the candidate window tracks the caret.
     private static Rect GetCursorRect(TextPresenter presenter)
     {
-        var caret = presenter.CaretIndex;
-        var rect = presenter.TextLayout.HitTestTextPosition(caret);
-        return rect;
+        // While composing, the document caret sits at the START of the preedit; the candidate
+        // window belongs at the composition caret. Adding the preedit offset is what makes the
+        // window follow the text actually being converted instead of lagging at its start.
+        var caret = presenter.CaretIndex + (presenter.PreeditTextCursorPosition ?? 0);
+        var layout = presenter.TextLayout;
+        var maxIndex = layout.TextLines.Sum(line => line.Length);
+        return layout.HitTestTextPosition(Math.Clamp(caret, 0, Math.Max(0, maxIndex)));
     }
 }

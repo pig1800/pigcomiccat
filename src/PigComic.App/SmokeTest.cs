@@ -147,6 +147,65 @@ internal static class SmokeTest
             return ok;
         });
 
+        // 6b. Multi-line composition must not lose lines. Passing the control's height as the
+        //     layout's maxHeight makes TextLayout silently drop lines that do not fit: the
+        //     last line of the multi-line editor rendered blank, its text vanished while
+        //     typing, and the caret and candidate window were stranded on the line above.
+        //     Single-line editors cannot show this, so it needs its own check.
+        CheckDetail("Multi-line composition keeps every line", () =>
+        {
+            var multi = new PartTextEditor
+            {
+                MultiLine = true,
+                Text = "line one\nline two\nline three\nline four",
+            };
+            var host = new Window { Content = multi, Width = 400, Height = 140 };
+            host.Show();
+            host.Measure(new Size(400, 140));
+            host.Arrange(new Rect(0, 0, 400, 140));
+            multi.ApplyTemplate();
+            host.Measure(new Size(400, 140));
+            host.Arrange(new Rect(0, 0, 400, 140));
+
+            try
+            {
+                if (multi.TemplatePresenter is not ImeTextPresenter ime)
+                {
+                    return "multi-line editor did not get an ImeTextPresenter";
+                }
+
+                var before = ime.TextLayout.TextLines.Count;
+
+                // Compose at the very end of the last line — the reported failure case.
+                multi.CaretIndex = multi.Text!.Length;
+                ime.Composition = new ImeComposition("にほんご", 4, [0, 2, 4], [1, 1, 2, 2]);
+                host.Measure(new Size(400, 140));
+                host.Arrange(new Rect(0, 0, 400, 140));
+
+                var layout = ime.TextLayout;
+                var expected = multi.Text!.Length + 4;
+                var laidOut = layout.TextLines.Sum(l => l.Length);
+
+                if (laidOut < expected || layout.TextLines.Count < before)
+                {
+                    return $"composition truncated: {before} lines -> {layout.TextLines.Count}, " +
+                           $"{expected} chars -> {laidOut} laid out";
+                }
+
+                // And the caret must land on the last line, not the one above it.
+                var caretY = layout.HitTestTextPosition(multi.CaretIndex + 4).Y;
+                var lastLineTop = layout.TextLines.Take(layout.TextLines.Count - 1).Sum(l => l.Height);
+                return caretY >= lastLineTop - 0.5
+                    ? null
+                    : $"caret stranded above the last line (y={caretY:F1}, last line top={lastLineTop:F1})";
+            }
+            finally
+            {
+                ime_ClearComposition(multi);
+                host.Close();
+            }
+        });
+
         // 7. PartTextEditor wires the composition hook up by itself when it enters the visual
         //    tree — without this, clause capture silently never runs (PLAN M2.6).
         Check("PartTextEditor auto-attached the IME message monitor", () =>
@@ -235,6 +294,14 @@ internal static class SmokeTest
 
         Console.WriteLine($"\nsmoke: {passes.Count} passed, {failures.Count} failed");
         return failures.Count == 0 ? 0 : 1;
+    }
+
+    private static void ime_ClearComposition(PartTextEditor editor)
+    {
+        if (editor.TemplatePresenter is ImeTextPresenter ime)
+        {
+            ime.Composition = null;
+        }
     }
 
     /// <summary>
