@@ -8,7 +8,7 @@ per IME, so one combined verdict would hide it).
 
 **Stack under test:** Avalonia 12.1.1, Windows. (Upgraded from 11.2.5 on 2026-08-23 — D-41.)
 
-> **Current state (2026-08-24):** the gate is **OPEN — 0/6 recorded**, and it is the only
+> **Current state (2026-08-24):** the gate is **OPEN — 4/6 recorded**, and it is the only
 > thing blocking M5. The code side is finished and verified (build clean, 213/213 tests,
 > `--smoke` 17/17).
 >
@@ -22,8 +22,10 @@ per IME, so one combined verdict would hide it).
 > - The M2.6 diagnostics capture confirmed IMM32 is delivering real henkan data (373 messages,
 >   multi-clause, TARGET_CONVERTED/CONVERTED attributes present) — see the table below.
 >
-> The checkboxes and the diagnostics tables still have to be filled from a deliberate run of
-> the six items. Nobody but the owner can produce them — **an AI session must not tick them.**
+> **Ticked 2026-08-24 from the owner's reported run** (they tested all four languages, JA on
+> both MS-IME and ATOK). Items 4 and 5 stay open because the owner's report did not cover
+> them — see the Result note under the checklist. Results here are only ever transcribed from
+> what the owner reports; **an AI session must not decide them.**
 
 ## Spike findings (recorded 2026-08-22, before the manual run)
 
@@ -50,14 +52,24 @@ must remain at 0 while composing.
 
 | # | Item (SPEC §21) | MS IME JA | MS IME KO |
 |---|---|---|---|
-| 1 | Romaji/jamo composition visible at the caret (not a floating box); Space shows candidates; Enter commits; no dropped/duplicated chars at fast typing | ⬜ | ⬜ |
-| 2 | Composition inside existing text (middle of string) inserts correctly | ⬜ | ⬜ |
-| 3 | (KO) 2-beolsik jamo assembles syllables in place; committing/backspace behaves like Notepad | ⬜ | ⬜ |
-| 4 | Shift+Enter during composition does not break composition state; Enter during composition never triggers a confirm (log stays 0) | ⬜ | ⬜ |
+| 1 | Romaji/jamo composition visible at the caret (not a floating box); Space shows candidates; Enter commits; no dropped/duplicated chars at fast typing | ✅ | ✅ |
+| 2 | Composition inside existing text (middle of string) inserts correctly | ✅ | ✅ |
+| 3 | (KO) 2-beolsik jamo assembles syllables in place; committing/backspace behaves like Notepad | n/a | ✅ |
+| 4 | Shift+Enter during composition does not break composition state; Enter during composition never triggers a confirm (log stays 0) | ⬜ | ⬜ |  <!-- Shift+Enter/newline reported green 2026-08-24; the confirm-counter half is not yet reported -->
 | 5 | IME on/off toggling (Alt+~ / Han-Eng) works while the control is focused | ⬜ | ⬜ |
-| 6 | **Modern composition rendering** (SPEC §21.2): composition text is drawn **coloured** (not underlined) with the caret visible inside it; after Space, the active henkan clause shows a **coloured background** that moves with ←/→. Run with **MS-IME JA and ATOK** (extra column below). | ⬜ | ⬜ |
+| 6 | **Modern composition rendering** (SPEC §21.2): composition text is drawn **coloured** (not underlined) with the caret visible inside it; after Space, the active henkan clause shows a **coloured background** that moves with ←/→. Run with **MS-IME JA and ATOK** (extra column below). | ✅ | ✅ |
 
-**Result:** 0/6 PASS — **do not start M5** until all six are PASS (escalate per §21).
+**Result: 4/6 PASS** (items 1, 2, 3, 6 — owner run 2026-08-24, all four languages, JA on both
+MS-IME and ATOK: insertion, composition, newline, candidate-window tracking, and first/middle/
+last-line input all green, including the zh-TW and KO cases that previously showed nothing).
+
+**Items 4 and 5 are not yet reported** and still hold the gate shut:
+- **4** — the Shift+Enter/newline half is confirmed green; the other half is not: while composing,
+  does the **confirm counter at the bottom of the gate window stay 0**? This is the D-32 guard that
+  stops Enter-inside-composition from confirming a segment, and M5's whole confirm loop rests on it.
+- **5** — toggling the IME on/off (Alt+`~`, or the Han/Eng key) while the editor is focused.
+
+**Do not start M5** until all six are PASS (escalate per §21).
 
 ### Item 6 — per-IME record (added 2026-08-24 with PLAN M2.6/M2.7)
 
@@ -67,10 +79,10 @@ message; record each IME separately since the whole point is that they behaved d
 
 | IME | Coloured composition text | Moving target-clause background | Caret inside preedit | Notes |
 |---|---|---|---|---|
-| MS-IME Japanese | ⬜ | ⬜ | ⬜ | |
-| ATOK (Passport) | ⬜ | ⬜ | ⬜ | |
-| MS Pinyin (ZH) | ⬜ | n/a (no clauses pre-conversion) | ⬜ | **regression watch**: this caret worked before M2.6 and must still work |
-| MS-IME Korean | ⬜ | n/a (jamo) | ⬜ | |
+| MS-IME Japanese | ✅ | ✅ | ✅ | |
+| ATOK (Passport) | ✅ | ✅ | ✅ | the IME the 2026-08-23 defect was found on |
+| MS Pinyin (ZH) | ✅ | n/a (no clauses pre-conversion) | ✅ | **regression watch** — still working after M2.6/M2.7/D-46 |
+| MS-IME Korean | ✅ | n/a (jamo) | ✅ | |
 
 ### M2.6 diagnostics capture (owner run)
 

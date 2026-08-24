@@ -11,7 +11,7 @@ model can do is finished; the project is parked on a gate only the owner can cle
 | M3 TM/TB engine + exchange | ✅ **DONE — do not redo** |
 | M4 project model, main view, dialogs, relink | ✅ **DONE — do not redo** |
 | M2.6 in-message IMM32 clause capture · M2.7 modern IME rendering | ✅ code done; owner reports single-line and (after the D-46 fix) multi-line all clear across JA/zh-TW/KR — formal 6-item gate record still outstanding |
-| **M2.5 IME gate** | ⛔ **OPEN — owner-run. Blocks everything below.** |
+| **M2.5 IME gate** | ⛔ **OPEN — 4/6 recorded (items 4 and 5 outstanding). Blocks everything below.** |
 | M5 – M11 | ⛔ blocked by the M2.5 gate |
 | M-TSF (TSF text store) | ⛔ not started; needs M2.6 diagnostics + the owner's Q7 decision |
 
