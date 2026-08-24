@@ -7,10 +7,10 @@ Desktop CAT tool for comic/manga translation.
 >    built, what the verified build/test/smoke baseline is, and which task is next. The
 >    markdown docs are the authoritative record of project state — treat them, not your
 >    guesses and not leftover context, as the truth.
-> 2. **As of 2026-08-24 there is no code task available**: M0–M4 and the IME work (M2.6/M2.7)
->    are done, and M5–M11 are blocked behind an owner-run IME gate (`docs/IME_REPORT.md`).
->    If that is still the case when you read this, say so and stop rather than inventing work
->    or re-running finished milestones.
+> 2. **As of 2026-08-24 the next task is M5.1.** M0–M4 and the IME work are done and the
+>    M2.5 IME gate passed 6/6 (`docs/IME_REPORT.md`), so M5–M11 are open. Do not re-run
+>    finished milestones, and do not re-open the IME stack — it is verified against MS-IME
+>    Japanese, ATOK, MS Pinyin and MS-IME Korean.
 > 3. Then read `docs/SPEC.md` — the single source of truth for behavior — before writing code.
 
 Work strictly from the task list in `docs/PLAN.md`, one task per session, in order, starting from the first task the STATUS block does **not** mark done. If the spec is silent on something you need, do NOT guess: add it to `docs/OPEN_QUESTIONS.md` and stop.
@@ -40,7 +40,7 @@ The project moved from Avalonia 11 to 12; older snippets, blog posts, and your o
 - Bubble IDs are never renumbered or reused. `Order` may be renumbered; ids may not.
 - TM writes happen only on confirm; never auto-fill or auto-propagate a translation (repetitions are offered via popup only, SPEC §10).
 - No LLM pretranslation feature. LLM = on-demand QA comments only (SPEC §13) via `ILlmClient`; the app must fully work with the stub.
-- M2 is a gate: no M5+ editor work until `docs/IME_REPORT.md` records all IME checks as PASS.
+- M2 was a gate: it PASSED 6/6 on 2026-08-24 (`docs/IME_REPORT.md`). Do not reopen the IME stack casually — read `docs/IME_HANDOFF.md` §5 first; it lists the traps that have already cost three sessions.
 - Never load a full-size page image into an Avalonia `Bitmap` (tiled rendering, SPEC §20).
 - Don't weaken/delete existing tests to make a task pass. `dotnet build PigComic.sln` + `dotnet test` must be green at the end of every task.
 - `PigComic.sln` must build without any sibling repos; `PigComic.Full.sln` (adds the PigTranslate adapter) may require them.

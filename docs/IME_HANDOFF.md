@@ -24,9 +24,9 @@ already cost two sessions.
   custom IME client survives only to add **conversion-clause highlighting**, which no
   Avalonia release provides.
 - **Build/tests/smoke**: green — 213/213 tests, `--smoke` 17/17.
-- **The M2.5 IME gate is still NOT passed.** It needs a manual run with real MS IME sessions
-  (SPEC §21.1); only the owner can do it. **M5+ stays blocked until `docs/IME_REPORT.md`
-  records 6/6 PASS.**
+- **The M2.5 IME gate PASSED 6/6 on 2026-08-24** (owner-run: MS-IME Japanese, ATOK, MS Pinyin,
+  MS-IME Korean). M5+ is unblocked. Before changing anything under `Ime/`, read §5 below —
+  every entry there is a bug that has already been shipped and diagnosed once.
 
 ## 2. Who provides what (the important table)
 

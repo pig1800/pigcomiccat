@@ -1,10 +1,13 @@
 # PigComic — Open Questions
 
-## Q7 — M-TSF scheduling (OPEN, decision point after PLAN M2.6's diagnostics)
+**None currently open.**
 
-The modern-flavor IME plan (`docs/IME_MODERN_COMPOSITION.md`, D-43) fixes clause capture over IMM32 first (M2.6/M2.7) and schedules the full TSF text store (M-TSF, ≈3–5 weeks) after M6. Owner decides once M2.6's diagnostics log is in hand:
-- ATOK delivers clause data in-message → keep M-TSF after M6 (recommended), gate passes on the IMM32 path;
-- ATOK delivers nothing even in-message → M-TSF jumps ahead of M5, since the gate's item 6 cannot pass for ATOK otherwise.
+## Q7 — M-TSF scheduling — RESOLVED 2026-08-24
+
+The modern-flavor IME plan (`docs/IME_MODERN_COMPOSITION.md`, D-43) fixed clause capture over IMM32 first (M2.6/M2.7) and scheduled the full TSF text store (M-TSF, ≈3–5 weeks) after M6, with the caveat that it would jump ahead of M5 if ATOK turned out to deliver no clause data even in-message.
+**Outcome: the first branch.** The M2.6 diagnostics captured real henkan state over IMM32 (373 composition messages, multi-clause, TARGET_CONVERTED/CONVERTED attributes), and the owner's gate run confirmed ATOK renders the moving clause highlight correctly. The IMM32 path carries JA and ATOK today, so **M-TSF stays scheduled after M6** and does not jump ahead of M5.
+
+Its remaining value is unchanged and still worth doing later: per-IME colour fidelity (ATOK users' own 表示色カスタマイズ palette), exact Notepad parity, and the groundwork for reconversion.
 
 ---
 

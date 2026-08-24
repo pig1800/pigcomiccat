@@ -2,32 +2,31 @@
 
 ## STATUS — READ THIS BEFORE ANYTHING ELSE (2026-08-24)
 
-**There is currently no code task available. Do not start one.** Every task an executing
-model can do is finished; the project is parked on a gate only the owner can clear.
+**Next task: M5.1.** The M2.5 IME gate passed on 2026-08-24 (6/6, owner-run), so M5–M11 are
+open. Start at the first task below that is not marked done.
 
 | Milestone | State |
 |---|---|
 | M0 scaffold · M1 `.pcml` core · M2.1–M2.4 tiled canvas | ✅ **DONE — do not redo** |
 | M3 TM/TB engine + exchange | ✅ **DONE — do not redo** |
 | M4 project model, main view, dialogs, relink | ✅ **DONE — do not redo** |
-| M2.6 in-message IMM32 clause capture · M2.7 modern IME rendering | ✅ code done; owner reports single-line and (after the D-46 fix) multi-line all clear across JA/zh-TW/KR — formal 6-item gate record still outstanding |
-| **M2.5 IME gate** | ⛔ **OPEN — 4/6 recorded (items 4 and 5 outstanding). Blocks everything below.** |
-| M5 – M11 | ⛔ blocked by the M2.5 gate |
-| M-TSF (TSF text store) | ⛔ not started; needs M2.6 diagnostics + the owner's Q7 decision |
+| M2.6 in-message IMM32 clause capture · M2.7 modern IME rendering | ✅ **DONE** — verified by the owner's gate run across MS-IME JA, ATOK, MS Pinyin and MS-IME Korean |
+| **M2.5 IME gate** | ✅ **PASSED 2026-08-24 — 6/6 recorded** (`docs/IME_REPORT.md`) |
+| M5 – M11 | ▶️ **open — start at M5.1** |
+| M-TSF (TSF text store) | ⏸ not started; Q7 resolved — stays scheduled after M6 (IMM32 path carries JA/ATOK today) |
 
 Verified baseline at that commit: `dotnet build PigComic.sln` clean, **213/213 tests**,
 **`--smoke` 17/17**. If those numbers differ when you start, something regressed — find out
 what before touching anything else.
 
-**The next action belongs to the owner, not to you.** Per SPEC §21.1 they must run the 6-item
-IME checklist (MS-IME Japanese, ATOK, MS-IME Korean) plus the M2.6 diagnostics capture, and
-record it in `docs/IME_REPORT.md`.
+**If you are an executing model:** begin at **M5.1** (editor shell + chapter open). Do not
+re-run the finished milestones above, and do not re-open the IME work — the gate is closed and
+`src/PigComic.App/Ime/` is verified against four IMEs. If you touch any editable text field,
+it must be a `PartTextEditor` (SPEC §21.2); `--smoke` enforces that.
 
-**If you are an executing model:** say that the gate needs the owner, and stop. Do not re-run
-finished milestones. Do not start M5 because "it builds". Do not fill in the gate table or the
-diagnostics table yourself — those results can only come from a real IME session on Windows,
-and inventing them would defeat the gate's entire purpose. **Once `docs/IME_REPORT.md` records
-6/6 PASS, the next task is M5.1 and nothing earlier.**
+The owner's gate record and the per-IME evidence live in `docs/IME_REPORT.md`; the IME
+architecture and its do-not-reintroduce list are in `docs/IME_HANDOFF.md`. Read the latter
+before changing anything under `Ime/`.
 
 ---
 
@@ -44,7 +43,7 @@ Rules for executing a task:
 - One task per session. Tasks within a milestone are ordered; do them in order unless marked (parallel-ok).
 - Manual acceptance steps state the exact expected result; run them on Windows.
 
-Milestone order is risk-ordered and fixed. **M2 is a gate: M5–M11 must not start until M2's IME acceptance is recorded as PASS in `docs/IME_REPORT.md`.**
+Milestone order is risk-ordered and fixed. M2 was the gate for M5–M11; it recorded PASS in `docs/IME_REPORT.md` on 2026-08-24, so the remaining milestones are open.
 
 ---
 
@@ -96,7 +95,7 @@ Milestone order is risk-ordered and fixed. **M2 is a gate: M5–M11 must not sta
 
 ---
 
-## M2 — Risk spikes: tiled canvas + IME gate (GATE for M5+) — M2.1–M2.4 ✅ DONE · M2.6/M2.7 ✅ code done · **M2.5 gate ⛔ OPEN (owner-run)**
+## M2 — Risk spikes: tiled canvas + IME gate ✅ DONE (gate PASSED 6/6 on 2026-08-24)
 
 ### M2.1 Tile math (Core, no Skia) ✅ DONE
 - **Files**: `src/PigComic.Core/Imaging/TilePyramid.cs`, `TileKey.cs`, `LruByteCache.cs` (generic, byte-budgeted).
@@ -117,12 +116,12 @@ Milestone order is risk-ordered and fixed. **M2 is a gate: M5–M11 must not sta
 - **Behavior**: SPEC §20 draw rules (resident tiles ± margin, coarse-level placeholder upscale, gray fallback, invalidate on arrival); wheel scroll, Ctrl+wheel zoom at cursor, fit-width; FPS overlay (frame time ring buffer).
 - **Acceptance** (manual, record numbers in `docs/IME_REPORT.md` sibling file `docs/SPIKE_REPORT.md`): scroll the 1000×40000 JPEG and PNG top-to-bottom fast: overlay reports ≥55 fps sustained; Task Manager working set < 900 MB; zoom in/out smooth.
 
-### M2.5 IME gate — OWNER-RUN, still open
+### M2.5 IME gate — ✅ PASSED 2026-08-24 (6/6, owner-run)
 - **Status**: the code side is complete and builds on Avalonia 12.1.1 (`PartTextEditor` + `ImeTextBoxInputMethodClient` + `ImeTextPresenter` + `PartTextEditorTheme`, SPEC §21.0). What remains is the **manual run**, which only the owner can do — it needs real MS IME sessions on Windows.
 - **Files**: `src/PigComic.App/Views/ImeTestWindow.axaml(.cs)` (Debug menu → "IME gate test"); `docs/IME_REPORT.md`.
 - **Behavior**: SPEC §21.1 checklist embedded in the window as tickboxes; the confirm counter must stay 0 while composing (the Enter guard, D-32).
 - **Acceptance**: run the SPEC §21.1 checklist manually with MS IME Japanese and Korean; all **6** items PASS recorded in `docs/IME_REPORT.md`. **Until that is recorded, M5–M11 do not start.** If items 1–5 fail, follow §21.1's escalation; if only item 6's highlight half fails, consult the owner (see §21.1).
-- **Note for the executing model**: you cannot complete this task yourself. Do not mark it done, do not fake results, and do not start M5 because "it builds". If you arrive here, report that the gate needs an owner run and stop.
+- **Outcome**: 6/6 PASS across MS-IME Japanese, ATOK, MS Pinyin and MS-IME Korean, including the modern clause rendering and the D-32 confirm guard. Evidence and per-IME detail in `docs/IME_REPORT.md`.
 - **2026-08-23 update**: the owner's partial run found the caret working (CN/ZH) but no henkan clause data with ATOK. Root cause analysis and the fix plan are in `docs/IME_MODERN_COMPOSITION.md`; tasks M2.6 and M2.7 below must land before the owner re-runs this gate. Item 6 is now judged in the **modern flavor** (SPEC §21.2).
 
 ### M2.6 In-message IMM32 clause capture + IME diagnostics — CODE DONE 2026-08-24, owner run pending
@@ -226,7 +225,7 @@ Milestone order is risk-ordered and fixed. **M2 is a gate: M5–M11 must not sta
 
 ---
 
-## M5 — Editor: segment list + target editor + confirm loop + TM/TB box ⛔ BLOCKED by the M2.5 gate
+## M5 — Editor: segment list + target editor + confirm loop + TM/TB box ▶️ NEXT (gate cleared)
 
 ### M5.1 Editor shell + chapter open
 - **Files**: `src/PigComic.App/Views/EditorView.axaml(.cs)`, `ViewModels/EditorViewModel.cs`, `Services/ChapterSession.cs` (owns PcmlDocument, dirty flag, save).
