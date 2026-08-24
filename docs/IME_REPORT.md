@@ -10,10 +10,20 @@ per IME, so one combined verdict would hide it).
 
 > **Current state (2026-08-24):** the gate is **OPEN — 0/6 recorded**, and it is the only
 > thing blocking M5. The code side is finished and verified (build clean, 213/213 tests,
-> `--smoke` 16/16). The owner has reported informally that the target editor and the modern
-> composition rendering work as expected in normal use, but that is **not** a substitute for
-> the run below: the checkboxes and the diagnostics tables must be filled from real IME
-> sessions. Nobody but the owner can produce them — an AI session must not tick them.
+> `--smoke` 17/17).
+>
+> **Owner observations so far** (informal, from normal use — recorded because they are real
+> evidence, but they are *not* the run below):
+> - 2026-08-24: single-line editor "works flawlessly"; the modern composition rendering
+>   (pure-blue text, aqua active clause) is what was wanted.
+> - 2026-08-24: multi-line editor was broken — blank last line, stranded caret, frozen
+>   candidate window. Diagnosed and fixed as D-46; owner re-tested afterwards across JA,
+>   zh-TW and KR and reported **all clear**.
+> - The M2.6 diagnostics capture confirmed IMM32 is delivering real henkan data (373 messages,
+>   multi-clause, TARGET_CONVERTED/CONVERTED attributes present) — see the table below.
+>
+> The checkboxes and the diagnostics tables still have to be filled from a deliberate run of
+> the six items. Nobody but the owner can produce them — **an AI session must not tick them.**
 
 ## Spike findings (recorded 2026-08-22, before the manual run)
 
@@ -74,6 +84,17 @@ must be re-prioritised (`docs/IME_MODERN_COMPOSITION.md` §5).
 |---|---|---|---|---|
 | MS-IME Japanese | | | | |
 | ATOK | | | | |
+
+**First capture, 2026-08-24 (mixed session — analysed from the owner's log).** 373 composition
+messages. Clause data present on every message (8 bytes = 2 boundaries minimum), attributes up
+to 20 bytes, 22 messages carrying more than one clause. Attribute histogram: 1485 `INPUT`,
+107 `TARGET_CONVERTED`, 62 `CONVERTED`, 18 `TARGET_NOTCONVERTED` — i.e. **real henkan state,
+captured in-message, exactly what the highlight needs**. Representative message:
+`clauses=[0,3,6,11] attrs=[1,1,1,2,2,2,2,2,2,2,2]` (first clause active, remainder converted).
+
+*Limitation:* the log does not record which IME produced each message, so this cannot be split
+per IME — the rows above still need one capture per IME, run separately. What it does prove is
+that the in-message read works and that the ATOK "no clause data" failure is gone as a class.
 
 If composition itself misbehaves at any point, untick **"Capture clause data in-message"**
 (or set `PIGCOMIC_IME_NO_HOOK=1`) and retry: that isolates the new hook as the cause.
