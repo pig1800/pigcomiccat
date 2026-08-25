@@ -35,7 +35,6 @@ public partial class BubbleRowViewModel : ObservableObject
     public ObservableCollection<PartViewModel> Parts { get; } = [];
 
     public string Id => Bubble.Id;
-    public string PageId => Bubble.PageId;
     public int Order => Bubble.Order;
 
     public string KindText => Bubble.Kind.ToString();

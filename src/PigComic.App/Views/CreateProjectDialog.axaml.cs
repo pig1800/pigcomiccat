@@ -45,9 +45,9 @@ public partial class CreateProjectDialog : Avalonia.Controls.Window
 
     private void OnCancelClick(object? sender, RoutedEventArgs e) => Close(false);
 
-    private string SourceLang() => SourceCombo.SelectedItem is ComboBoxItem { Content: string s } && s != "(free text)" ? s : "ja";
+    private string SourceLang() => SourceCombo.SelectedItem is ComboBoxItem { Content: string s } && s != "(free text)" ? s : "zh-CN";
 
-    private string TargetLang() => TargetCombo.SelectedItem is ComboBoxItem { Content: string s } && s != "(free text)" ? s : "zh-Hant";
+    private string TargetLang() => TargetCombo.SelectedItem is ComboBoxItem { Content: string s } && s != "(free text)" ? s : "ja";
 
     private void OnOkClick(object? sender, RoutedEventArgs e)
     {

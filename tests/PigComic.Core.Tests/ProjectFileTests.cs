@@ -25,12 +25,12 @@ public class ProjectFileTests : IDisposable
     public void Create_Then_Load_Has_Defaults()
     {
         var path = Path.Combine(_dir, "project.json");
-        ProjectFile.CreateNew(path, "勇者ピッグ", "ja", "zh-Hant");
+        ProjectFile.CreateNew(path, "勇者小猪", "zh-CN", "ja");
 
         var pf = ProjectFile.Load(path);
-        Assert.Equal("勇者ピッグ", pf.Title);
-        Assert.Equal("ja", pf.SourceLanguage);
-        Assert.Equal("zh-Hant", pf.TargetLanguage);
+        Assert.Equal("勇者小猪", pf.Title);
+        Assert.Equal("zh-CN", pf.SourceLanguage);
+        Assert.Equal("ja", pf.TargetLanguage);
         Assert.Empty(pf.ChapterPaths);
         Assert.Equal(180, pf.Settings.AutosaveSeconds);
         Assert.Equal(8, pf.Settings.MaxCharsPerLine);
@@ -59,7 +59,7 @@ public class ProjectFileTests : IDisposable
     public void Chapter_Add_Remove_RoundTrip()
     {
         var path = Path.Combine(_dir, "project.json");
-        ProjectFile.CreateNew(path, "t", "ja", "zh-Hant");
+        ProjectFile.CreateNew(path, "t", "zh-CN", "ja");
         var pf = ProjectFile.Load(path);
         Assert.True(pf.AddChapter("C:\\a\\ch1.pcml"));
         Assert.False(pf.AddChapter("C:\\a\\ch1.pcml")); // duplicate rejected
@@ -99,7 +99,7 @@ public class ProjectFileTests : IDisposable
     public void CreateNew_Project_Folder_Produces_Layout_With_Openable_Stores()
     {
         var folder = Path.Combine(_dir, "MyManga");
-        ProjectFolder.Create(folder, "勇者ピッグ", "ja", "zh-Hant");
+        ProjectFolder.Create(folder, "勇者小猪", "zh-CN", "ja");
 
         Assert.True(File.Exists(Path.Combine(folder, "project.json")));
         Assert.True(File.Exists(Path.Combine(folder, "characters.json")));
@@ -107,7 +107,7 @@ public class ProjectFileTests : IDisposable
         Assert.True(File.Exists(Path.Combine(folder, "tb.db")));
         Assert.True(Directory.Exists(Path.Combine(folder, "characters")));
 
-        var (tm, tb) = ProjectFolder.OpenStores(folder, "ja", "zh-Hant");
+        var (tm, tb) = ProjectFolder.OpenStores(folder, "zh-CN", "ja");
         using (tm)
         using (tb)
         {
@@ -121,6 +121,6 @@ public class ProjectFileTests : IDisposable
         var folder = Path.Combine(_dir, "Occupied");
         Directory.CreateDirectory(folder);
         File.WriteAllText(Path.Combine(folder, "x.txt"), "x");
-        Assert.Throws<InvalidOperationException>(() => ProjectFolder.Create(folder, "t", "ja", "zh-Hant"));
+        Assert.Throws<InvalidOperationException>(() => ProjectFolder.Create(folder, "t", "zh-CN", "ja"));
     }
 }

@@ -3,18 +3,18 @@ using System.Xml.Linq;
 namespace PigComic.Core.Domain;
 
 /// <summary>
-/// One of a bubble's 1..3 target sub-regions. Mutable model object, optionally
-/// backed by its <c>&lt;part&gt;</c> XElement (SPEC §5.8): when backed, property
-/// setters write through to the element immediately.
+/// One of a bubble's 1..3 target pieces, each anchored by its own marker. Mutable model
+/// object, optionally backed by its <c>&lt;part&gt;</c> XElement (SPEC §5.8): when backed,
+/// property setters write through to the element immediately.
 /// </summary>
 public sealed class TargetPart
 {
     private readonly XElement? _element;
-    private string _rawRegion;
+    private string _rawMarker;
     private string _rawText = "";
 
     /// <summary>Element-less construction (used by domain tests and new bubbles without document backing).</summary>
-    public TargetPart(int index, PixelRect region, string text)
+    public TargetPart(int index, PixelPoint marker, string text)
     {
         if (index is < 1 or > 3)
         {
@@ -22,7 +22,7 @@ public sealed class TargetPart
         }
 
         Index = index;
-        _rawRegion = RegionString(region);
+        _rawMarker = MarkerString(marker);
         _rawText = NormalizeNewlines(text);
     }
 
@@ -31,20 +31,21 @@ public sealed class TargetPart
     {
         _element = part;
         Index = int.TryParse((string?)part.Attribute("index"), out var idx) ? idx : 1;
-        var regionEl = part.Element("region");
-        _rawRegion = regionEl is null ? "" : RegionFromAttrs(regionEl);
+        var markerEl = part.Element("marker");
+        _rawMarker = markerEl is null ? "" : MarkerFromAttrs(markerEl);
         _rawText = NormalizeNewlines((string?)part.Element("text") ?? "");
     }
 
     public int Index { get; }
 
-    public PixelRect Region
+    /// <summary>Where this part's text starts, in strip coordinates (D-50).</summary>
+    public PixelPoint Marker
     {
-        get => ParseRegion(_rawRegion);
+        get => ParseMarker(_rawMarker);
         set
         {
-            _rawRegion = RegionString(value);
-            _element?.Element("region")?.SetAttrs(value);
+            _rawMarker = MarkerString(value);
+            _element?.MarkerElement().SetAttrs(value);
         }
     }
 
@@ -67,53 +68,50 @@ public sealed class TargetPart
         }
     }
 
-    internal static string RegionString(PixelRect r) => $"{r.X},{r.Y},{r.Width},{r.Height}";
+    internal static string MarkerString(PixelPoint p) => $"{p.X},{p.Y}";
 
-    internal static string RegionFromAttrs(XElement regionEl)
+    internal static string MarkerFromAttrs(XElement markerEl)
     {
-        string attr(XName name) => (string?)regionEl.Attribute(name) ?? "";
-        return $"{attr("x")},{attr("y")},{attr("width")},{attr("height")}";
+        string attr(XName name) => (string?)markerEl.Attribute(name) ?? "";
+        return $"{attr("x")},{attr("y")}";
     }
 
     internal static string NormalizeNewlines(string s) => s.Replace("\r\n", "\n").Replace('\r', '\n');
 
     internal XElement? BackingElement => _element;
 
-    private static PixelRect ParseRegion(string raw)
+    private static PixelPoint ParseMarker(string raw)
     {
         var parts = raw.Split(',');
-        if (parts.Length == 4 &&
+        if (parts.Length == 2 &&
             int.TryParse(parts[0], out var x) &&
-            int.TryParse(parts[1], out var y) &&
-            int.TryParse(parts[2], out var w) &&
-            int.TryParse(parts[3], out var h))
+            int.TryParse(parts[1], out var y))
         {
-            return new PixelRect(x, y, w, h);
+            return new PixelPoint(x, y);
         }
 
-        return new PixelRect(0, 0, 1, 1);
+        return PixelPoint.Origin;
     }
 }
 
 internal static class XElementExtensions
 {
-    internal static XElement RegionElement(this XElement part)
+    /// <summary>The element's <c>&lt;marker&gt;</c> child, created first-in-order if absent.</summary>
+    internal static XElement MarkerElement(this XElement owner)
     {
-        var region = part.Element("region");
-        if (region is null)
+        var marker = owner.Element("marker");
+        if (marker is null)
         {
-            region = new XElement("region");
-            part.AddFirst(region);
+            marker = new XElement("marker");
+            owner.AddFirst(marker);
         }
 
-        return region;
+        return marker;
     }
 
-    internal static void SetAttrs(this XElement el, PixelRect r)
+    internal static void SetAttrs(this XElement el, PixelPoint p)
     {
-        el.SetAttributeValue("x", r.X);
-        el.SetAttributeValue("y", r.Y);
-        el.SetAttributeValue("width", r.Width);
-        el.SetAttributeValue("height", r.Height);
+        el.SetAttributeValue("x", p.X);
+        el.SetAttributeValue("y", p.Y);
     }
 }

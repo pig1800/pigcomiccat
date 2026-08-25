@@ -36,8 +36,10 @@ PigComic is a single-user desktop CAT (computer-assisted translation) tool speci
 | Term | Meaning |
 |---|---|
 | Package / chapter | One `.pcml` file = one chapter = one job. |
-| Bubble | One translation unit: a source region on a page with source text, target text, status. Includes non-balloon text (signs, SFX). |
-| Part | One of up to 3 sub-regions of a bubble's **target**. The source is always exactly one region. |
+| Bubble | One translation unit: a marker on the strip with source text, target text, status. Includes non-balloon text (signs, SFX). |
+| Part | One of up to 3 pieces of a bubble's **target**, each with its own marker. The source is always exactly one marker. |
+| Strip | The whole chapter as one continuous vertical image: its `<image>` files joined top to bottom. All coordinates are strip coordinates (§5.6), and there is no page concept (D-49). |
+| Marker | A bubble's anchor point — the top-left of where its text starts. Drawn as a thick cross; it has no width or height (D-50). |
 | Confirm | User action (Enter/Ctrl+Enter) that sets status `Translated` and writes the pair to the TM. |
 | Normalized text | Output of `Normalize(text, lang)` (§7.2). All TM hashing/matching happens on normalized text. |
 | MemoQ Count | The smaller billing count: CJK-ideograph count after ASCII-run collapsing (§11). |
@@ -81,26 +83,36 @@ Rules:
 
 ## 4. Domain model (PigComic.Core/Domain)
 
+**A chapter has no pages** (owner directive 2026-08-25, D-49). Its images are simply joined one
+after another into a single continuous vertical **strip**, the way a webtoon reads. Everything
+positional — bubble markers, reading order, scrolling — lives in one chapter-global coordinate
+space; images are only how the strip is stored and tiled.
+
+**A bubble is anchored by a point, not a rectangle** (D-50). Comic text is frequently not
+rectangular (SFX above all), so a box was both a lie and busywork. The model keeps only the
+top-left anchor, drawn as a thick cross in the image pane.
+
 ```csharp
 public enum BubbleKind { Speech, Thought, Narration, Sfx, Sign, Note }
 public enum BubbleStatus { Untranslated, Draft, Translated, Reviewed, Locked }
 
-public sealed record PixelRect(int X, int Y, int Width, int Height);   // top-left origin, ORIGINAL image pixels (§5.6)
+/// Anchor in STRIP coordinates: top-left origin, X from the strip's left edge,
+/// Y from the top of the first image (§5.6).
+public sealed record PixelPoint(int X, int Y);
 
 public sealed class TargetPart {            // mutable model objects backed by the XDocument (§5.8)
     public int Index { get; }               // 1..3
-    public PixelRect Region { get; set; }
+    public PixelPoint Marker { get; set; }
     public string Text { get; set; }        // LF newlines only
 }
 
 public sealed class Bubble {
     public string Id { get; }               // immutable, never renumbered
-    public string PageId { get; set; }
-    public int Order { get; set; }          // reading order within page, ≥1
+    public int Order { get; set; }          // chapter-global reading order, 1..n
     public BubbleKind Kind { get; set; }
     public string? Character { get; set; }  // null = unset
     public BubbleStatus Status { get; set; }
-    public PixelRect SourceRegion { get; set; }
+    public PixelPoint Marker { get; set; }  // where the source text starts
     public string SourceText { get; set; }
     public IReadOnlyList<TargetPart> Parts { get; }   // always 1..3; mutate via SetPartCount(n)
     public string Notes { get; set; }       // "" = none
@@ -108,11 +120,11 @@ public sealed class Bubble {
     public string TargetJoined => string.Join("\n", Parts.Select(p => p.Text));  // the TM unit target
 }
 
-public sealed class Page {
-    public string Id { get; }
+public sealed class ChapterImage {
     public string FileName { get; set; }    // name inside /media
     public int Width { get; set; }          // ORIGINAL dimensions before any downscale
     public int Height { get; set; }
+    public int StripTop { get; }            // sum of the heights of the images before it
 }
 
 public sealed class Chapter {               // in-memory view of one .pcml
@@ -120,13 +132,20 @@ public sealed class Chapter {               // in-memory view of one .pcml
     public string ChapterNumber { get; }
     public string SourceLanguage { get; }
     public string TargetLanguage { get; }
-    public IList<string> Characters { get; }         // chapter character-name list
-    public IReadOnlyList<Page> Pages { get; }        // ordered
-    public IReadOnlyList<Bubble> Bubbles { get; }    // sorted (page order, Order)
+    public IList<string> Characters { get; }              // chapter character-name list
+    public IReadOnlyList<ChapterImage> Images { get; }    // ordered; document order IS strip order
+    public IReadOnlyList<Bubble> Bubbles { get; }         // sorted by Order
+
+    public int StripWidth { get; }                        // max image width
+    public long StripHeight { get; }                      // sum of image heights
+    public (int ImageIndex, int LocalY) Locate(long stripY);   // strip Y -> image + offset inside it
 }
 ```
 
-Reading order: global order = page order in `<pages>`, then `Order` ascending within a page. `Order` values are unique per page; the CAT **may renumber `Order`** when inserting/reordering, but **never changes `Id`**.
+Reading order is `Order` ascending across the whole chapter — there is no page grouping to
+break it up. `Order` values are unique within the chapter; the CAT **may renumber `Order`**
+when inserting or reordering, but **never changes `Id`**. New bubbles take their `Order` from
+their marker's Y (D-17), which is the natural reading direction on a strip.
 
 ---
 
@@ -140,7 +159,7 @@ A `.pcml` file is a ZIP archive:
 chapter012.pcml
 ├─ content.xml            everything except pixels (UTF-8, no BOM)
 └─ media/
-   ├─ 0001.jpg            page images; JPG and PNG both valid
+   ├─ 0001.jpg            strip images, in order; JPG and PNG both valid
    └─ 0002.png
 ```
 
@@ -151,42 +170,40 @@ chapter012.pcml
 
 ### 5.2 Lifecycle
 
-Generated by an external program (the `.pcml` generator, separate repo — see §27.3); after that the CAT owns the file and is the only writer. `content.xml` is the **round-trip storage**: source text, translations, regions, statuses, notes all live there. There is no separate "return package".
+Generated by an external program (the `.pcml` generator, separate repo — see §27.3); after that the CAT owns the file and is the only writer. `content.xml` is the **round-trip storage**: source text, translations, markers, statuses, notes all live there. There is no separate "return package".
 
-### 5.3 `content.xml` schema (version 1)
+### 5.3 `content.xml` schema (version 2)
 
 No XML namespace (DECISIONS D-02). Root element `<pcml>`. All text content uses LF (`\n`) newlines; the writer converts CRLF on write. Elements that carry user text (`source`, `text`, `notes`, `llmComment`) must be written with `xml:space="preserve"` when their value starts/ends with whitespace or is whitespace-only.
 
 | Element / attribute | Type | Req | Meaning |
 |---|---|---|---|
 | `pcml` | element | ✔ | Root. |
-| `pcml/@version` | int | ✔ | Schema version. This spec defines `1`. Reader accepts `1`; higher → open read-only with warning. |
+| `pcml/@version` | int | ✔ | Schema version. This spec defines `2`. Reader accepts `2`; higher → open read-only with warning; `1` is rejected with a clear message (the paged/rectangle model of D-49/D-50; version 1 never shipped, so no migration exists). |
 | `pcml/meta` | element | ✔ | |
 | `meta/title` | string | ✔ | Comic title. |
 | `meta/chapter` | string | ✔ | Chapter number, free-form (`"012"`, `"12.5"`). |
-| `meta/sourceLanguage` | BCP-47 | ✔ | e.g. `ja`, `zh-Hans`. |
+| `meta/sourceLanguage` | BCP-47 | ✔ | e.g. `zh-CN`, `ja`. |
 | `meta/targetLanguage` | BCP-47 | ✔ | Exactly one target per package. |
 | `pcml/characters` | element | ✔ | May be empty. |
 | `characters/character` | element | 0..n | |
 | `character/@name` | string | ✔ | Unique within the file. |
-| `pcml/pages` | element | ✔ | ≥1 page. **Document order of `<page>` elements = page order.** Order is explicit, never directory order. |
-| `pages/page/@id` | string | ✔ | Unique within file. Generator convention: `p0001`… |
-| `pages/page/@file` | string | ✔ | File name inside `media/` (no path separators). |
-| `pages/page/@width`, `@height` | int ≥1 | ✔ | **Original** image dimensions before any downscaling (needed for PSD export). The media file itself may be smaller; see §5.6. |
-| `pcml/bubbles` | element | ✔ | May be empty. Writer emits bubbles sorted by (page order, `@order`); reader tolerates any order and sorts. |
-| `bubble/@id` | string | ✔ | Stable, unique within file. Generator emits deterministic IDs (`p0001-b0001` = page index + bubble index). The CAT **never renumbers**; CAT-created bubbles get `u` + 8 random lowercase hex chars, collision-checked (D-03). |
-| `bubble/@page` | string | ✔ | Must reference an existing `page/@id`. |
-| `bubble/@order` | int ≥1 | ✔ | Reading order within the page; unique per page. |
+| `pcml/images` | element | ✔ | ≥1 image. **Document order of `<image>` elements = strip order**, top to bottom. Never directory order. There is no page concept: these are the segments the strip is stored in (D-49). |
+| `images/image/@file` | string | ✔ | File name inside `media/` (no path separators). Identifies the image; there is no id attribute, because nothing references an image. |
+| `images/image/@width`, `@height` | int ≥1 | ✔ | **Original** image dimensions before any downscaling (needed for PSD export). The media file itself may be smaller; see §5.6. |
+| `pcml/bubbles` | element | ✔ | May be empty. Writer emits bubbles sorted by `@order`; reader tolerates any order and sorts. |
+| `bubble/@id` | string | ✔ | Stable, unique within file. Generator emits deterministic IDs (`b0001`, `b0002`, … sequential across the whole chapter). The CAT **never renumbers**; CAT-created bubbles get `u` + 8 random lowercase hex chars, collision-checked (D-03). |
+| `bubble/@order` | int ≥1 | ✔ | Chapter-global reading order; unique within the file. |
 | `bubble/@kind` | enum | ✔ | `Speech` `Thought` `Narration` `Sfx` `Sign` `Note` (exact strings). |
 | `bubble/@character` | string | opt | Speaking character; attribute omitted when unset. Value need not exist in `characters` (validation warns, §5.7). |
 | `bubble/@status` | enum | ✔ | `Untranslated` `Draft` `Translated` `Reviewed` `Locked`. |
-| `bubble/region` | element | ✔ (exactly 1) | The **source** region. |
-| `region/@x @y @width @height` | int | ✔ | Top-left origin, original-image pixel coordinates. `width,height ≥ 1`. May extend past page bounds (OCR noise); the CAT clamps only on user edit. |
+| `bubble/marker` | element | ✔ (exactly 1) | Where the **source** text starts. |
+| `marker/@x @y` | int ≥0 | ✔ | Strip coordinates, top-left origin (§5.6). May fall outside the strip (OCR noise); the CAT clamps only on user edit. |
 | `bubble/source` | string element | ✔ | Source text; may be empty. |
 | `bubble/target` | element | ✔ | Always present. |
 | `target/part` | element | 1..3 | `@index` = 1..3, contiguous from 1, unique. **1 part = unsplit** (the normal case). |
 | `part/@index` | int | ✔ | |
-| `part/region` | element | ✔ (exactly 1) | Target part region, same coordinate space as source region. For an untranslated/unsplit bubble the generator sets it equal to the source region. |
+| `part/marker` | element | ✔ (exactly 1) | Where this target part starts, same coordinate space as the source marker. For an untranslated/unsplit bubble the generator sets it equal to the source marker. |
 | `part/text` | string element | ✔ | Target text of this part; may be empty. |
 | `bubble/notes` | string element | 0..1 | User notes. |
 | `bubble/llmComment` | string element | 0..1 | LLM QA comment (§13). Kept separate from user notes (D-04). |
@@ -199,54 +216,54 @@ No XML namespace (DECISIONS D-02). Root element `<pcml>`. All text content uses 
 
 ```xml
 <?xml version="1.0" encoding="utf-8"?>
-<pcml version="1">
+<pcml version="2">
   <meta>
-    <title>勇者ピッグ</title>
+    <title>勇者小猪</title>
     <chapter>012</chapter>
-    <sourceLanguage>ja</sourceLanguage>
-    <targetLanguage>zh-Hant</targetLanguage>
+    <sourceLanguage>zh-CN</sourceLanguage>
+    <targetLanguage>ja</targetLanguage>
   </meta>
   <characters>
-    <character name="ピッグ"/>
+    <character name="小猪"/>
     <character name="魔王"/>
   </characters>
-  <pages>
-    <page id="p0001" file="0001.jpg" width="1080" height="41250"/>
-    <page id="p0002" file="0002.png" width="1080" height="38200"/>
-  </pages>
+  <images>
+    <image file="0001.jpg" width="1080" height="41250"/>
+    <image file="0002.png" width="1080" height="38200"/>
+  </images>
   <bubbles>
-    <bubble id="p0001-b0001" page="p0001" order="1" kind="Speech" character="ピッグ" status="Translated">
-      <region x="612" y="480" width="240" height="310"/>
-      <source>おはよう　ございます！</source>
+    <bubble id="b0001" order="1" kind="Speech" character="小猪" status="Translated">
+      <marker x="612" y="480"/>
+      <source>早上好！</source>
       <target>
         <part index="1">
-          <region x="612" y="480" width="240" height="310"/>
-          <text>早安！</text>
+          <marker x="612" y="480"/>
+          <text>おはようございます！</text>
         </part>
       </target>
     </bubble>
-    <bubble id="p0001-b0002" page="p0001" order="2" kind="Thought" status="Draft">
-      <region x="120" y="900" width="300" height="280"/>
-      <source>まさか…魔王が１００人も？</source>
+    <bubble id="b0002" order="2" kind="Thought" status="Draft">
+      <marker x="120" y="900"/>
+      <source>难道说…魔王有100个？</source>
       <target>
         <part index="1">
-          <region x="120" y="900" width="300" height="130"/>
-          <text>難道說…</text>
+          <marker x="120" y="900"/>
+          <text>まさか…</text>
         </part>
         <part index="2">
-          <region x="120" y="1050" width="300" height="130"/>
-          <text>魔王竟有100人？</text>
+          <marker x="120" y="948"/>
+          <text>魔王が100人も？</text>
         </part>
       </target>
-      <notes>確認：100人 or 100隻</notes>
+      <notes>确认：100人 or 100只</notes>
       <llmComment>「まさか」の驚きがやや弱い。語気詞の追加を検討。</llmComment>
     </bubble>
-    <bubble id="p0002-b0001" page="p0002" order="1" kind="Sfx" status="Untranslated">
-      <region x="0" y="200" width="400" height="600"/>
-      <source>ドドド</source>
+    <bubble id="b0003" order="3" kind="Sfx" status="Untranslated">
+      <marker x="0" y="41450"/>
+      <source>咚咚咚</source>
       <target>
         <part index="1">
-          <region x="0" y="200" width="400" height="600"/>
+          <marker x="0" y="41450"/>
           <text></text>
         </part>
       </target>
@@ -267,9 +284,22 @@ Never leave a half-written zip:
 
 Autosave runs this same path on a background thread every `autosaveSeconds` (default 180) when the chapter is dirty.
 
-### 5.6 Coordinate space and downscaled media
+### 5.6 Strip coordinate space and downscaled media
 
-Region coordinates are **always in original-image pixel space** (`page/@width`,`@height`). The media file may be a downscaled copy; on load the App reads each media image's actual dimensions from its header and computes `scale = mediaWidth / page.Width` for overlay drawing and hit-testing. All model/geometry math stays in original space; only rendering multiplies by `scale`.
+The chapter is the vertical concatenation of its `<image>` elements in document order. Each
+image is left-aligned at x = 0; the strip is `StripWidth` = max image width, `StripHeight` =
+sum of image heights. **Marker coordinates are strip coordinates in original-image pixels**:
+X from the strip's left edge, Y from the top of the first image, continuing across image
+boundaries without reset. So an image whose predecessors total 41 250 px of height occupies
+strip Y 41 250 … 41 250 + its own height.
+
+`Chapter.Locate(stripY)` maps a strip Y back to `(imageIndex, localY)` — needed by the tiled
+renderer and by PSD export (§27.2), the only two places that care which image a marker is on.
+
+The media file may be a downscaled copy of the original: on load the App reads each media
+image's actual dimensions from its header and computes `scale = mediaWidth / image.Width` for
+drawing and hit-testing. All model/geometry math stays in original strip space; only rendering
+multiplies by `scale`.
 
 ### 5.7 Validation
 
@@ -278,16 +308,16 @@ Region coordinates are **always in original-image pixel space** (`page/@width`,`
 | Code | Severity | Condition |
 |---|---|---|
 | PCML-E01 | Error | Missing/duplicate required element or attribute per §5.3 table. |
-| PCML-E02 | Error | `@version` > 1 (read-only) or not an integer. |
-| PCML-E03 | Error | Duplicate `page/@id` or `bubble/@id`. |
-| PCML-E04 | Error | `bubble/@page` references no page. |
-| PCML-E05 | Error | `page/@file` missing from `media/`, or contains `/` or `\`. |
+| PCML-E02 | Error | `@version` > 2 (read-only), `@version` = 1 (the pre-reform paged model — rejected, D-49), or not an integer. |
+| PCML-E03 | Error | Duplicate `bubble/@id`. |
+| PCML-E04 | Error | No `<image>` elements — a chapter with no strip cannot be positioned. |
+| PCML-E05 | Error | `image/@file` missing from `media/`, or contains `/` or `\`. |
 | PCML-E06 | Error | Part count 0 or > 3; `@index` not contiguous from 1. |
 | PCML-E07 | Error | Enum value outside §5.3 sets. |
-| PCML-W01 | Warning | Duplicate `@order` within a page (reader re-sorts stably and renumbers in memory; file fixed on next save). |
+| PCML-W01 | Warning | Duplicate `@order` (reader re-sorts stably and renumbers in memory; file fixed on next save). |
 | PCML-W02 | Warning | `@character` not in `<characters>` list (name auto-added to the chapter list in memory). |
-| PCML-W03 | Warning | Region fully outside page bounds. |
-| PCML-W04 | Warning | Media entry not referenced by any page (preserved, not shown). |
+| PCML-W03 | Warning | Marker falls outside the strip (negative, or below `StripHeight`). |
+| PCML-W04 | Warning | Media entry not referenced by any `<image>` (preserved, not shown). |
 
 ### 5.8 Round-trip mechanism (normative implementation approach)
 
@@ -318,8 +348,8 @@ MyManga/
 {
   "schemaVersion": 1,
   "title": "勇者ピッグ",
-  "sourceLanguage": "ja",
-  "targetLanguage": "zh-Hant",
+  "sourceLanguage": "zh-CN",
+  "targetLanguage": "ja",
   "chapters": [
     { "path": "D:\\jobs\\pig\\ch012.pcml" }
   ],
@@ -370,7 +400,7 @@ Chapter array order = display order. Unknown JSON properties are preserved on sa
 
 - **List** of registered projects (title, path, language pair, last opened). Double-click / Enter opens.
 - **Open**: file picker for an existing `project.json` (adds to registry).
-- **Create**: dialog with title (required), folder path (required; created if missing; must be empty or nonexistent), source language, target language (dropdowns: `ja`, `zh-Hans`, `zh-Hant`, `ko`, `en`, plus free-text override). Creates folder contents (§6.1) with empty TM/TB.
+- **Create**: dialog with title (required), folder path (required; created if missing; must be empty or nonexistent), source language, target language (dropdowns: `zh-CN`, `zh-TW`, `ja`, `ko`, `en`, plus free-text override). **Defaults to `zh-CN` → `ja`** (D-51), the owner's normal working direction. Creates folder contents (§6.1) with empty TM/TB.
 - **Remove**: dialog with two radio choices — *Remove from list only* (default) / *Delete project folder from disk*. Deleting requires a second checkbox "I understand this permanently deletes the folder" (permanent delete, no recycle bin — D-08). `.pcml` files are outside the folder and are never deleted by this.
 
 ### 6.6 Relink (Trados-style)
@@ -543,7 +573,7 @@ One list, Trados/memoQ style — **not** two boxes:
 
 Interaction:
 - `Ctrl+1..9` or double-click inserts entry N.
-- **TM entry insert**: replaces the *entire* target — collapses to 1 part (part regions reset to the source region) and sets its text to the TM target (D-12). Status → `Draft` (not confirmed).
+- **TM entry insert**: replaces the *entire* target — collapses to 1 part (its marker resets to the source marker) and sets its text to the TM target (D-12). Status → `Draft` (not confirmed).
 - **TB entry insert**: inserts `target_term` at the caret in the focused part.
 - Each TM row shows: score%, target text (single line, `⏎` for newlines), source diff highlight (differences vs current source underlined), origin chapter, character. Each TB row shows: source term → target term, forbidden marker, notes tooltip.
 - Query runs async on selection change with 150 ms debounce; results for a stale selection are discarded.
@@ -631,7 +661,7 @@ Test table (normative; `tcyMaxDigitRun=3`, lang=ja unless noted):
 - **Prompt**: project file `llm-qa-prompt.txt` (created from a built-in default template on first use), editable in the settings dialog with a plain multi-line editor. The default template instructs the model on the reviewer role, the response contract below, and how to maintain its memory.
 - **Memory**: project file `llm-qa-memory.md` — a persistent scratchpad the LLM maintains across QA runs (character voice observations, recurring terminology issues, style agreements). Included verbatim in every request; the response may replace it (below). Viewable and hand-editable in the settings dialog. Hard cap 16,000 characters: a returned memory longer than the cap is rejected with a warning (comments are still applied, memory left unchanged).
 - **Provider/model**: from `project.json` `settings.llmQa` (§6.2) — `provider` ∈ {`claude`, `openai`, `gemini`} (free-text tolerated, passed through), `model` free text. Defaults: `claude` / `claude-opus-5`. Selectable in the settings dialog (provider dropdown + model text box).
-- Request assembly: system prompt = `llm-qa-prompt.txt`; user content = language pair, character sheet (master-list rows for characters appearing in scope: name, gender, age, pronoun, comments), current memory (fenced section), and the bubble list as JSON `[{id, page, kind, character, source, target}]`.
+- Request assembly: system prompt = `llm-qa-prompt.txt`; user content = language pair, character sheet (master-list rows for characters appearing in scope: name, gender, age, pronoun, comments), current memory (fenced section), and the bubble list as JSON `[{id, order, kind, character, source, target}]`.
 - Response contract — the model must return **only** a JSON object:
   ```json
   { "comments": [ { "id": "p0001-b0002", "comment": "..." } ], "memory": "full replacement text (optional)" }
@@ -657,21 +687,22 @@ Three vertical areas, left→right, with draggable splitters (widths persisted i
 │               │  └────────────┴───────────┘  │  Notes        │
 │               │                              │  LLM QA btn   │
 └───────────────┴──────────────────────────────┴───────────────┘
- Status bar: chapter, page x/y, selected bubble id, counts, save state
+ Status bar: chapter, strip position, selected bubble id, counts, save state
 ```
 
 ### 14.2 Image pane
 
-- Renders the **current page** via the tiled renderer (§20). Scroll (wheel = vertical, Shift+wheel = horizontal) and zoom (Ctrl+wheel around cursor; Ctrl+`+`/`-`/`0` = in/out/fit-width).
-- Overlays: every bubble's source region on the current page as a rectangle (2 px outline; color by status — Untranslated gray, Draft amber, Translated green, Reviewed blue, Locked purple; selected bubble: thicker outline + fill at 15% opacity). When a bubble is selected, its target part regions are drawn dashed.
-- Click inside a region selects that bubble (topmost smallest region wins on overlap) and focuses its row in the segment list; selecting a row auto-scrolls/pages the image so the region is visible (centered when off-screen).
-- PageUp/PageDown switch pages; selecting a bubble on another page switches pages automatically.
+- Renders the **whole chapter as one continuous strip** via the tiled renderer (§20) — there is no page concept and no page switching (D-49). Scroll (wheel = vertical, Shift+wheel = horizontal) and zoom (Ctrl+wheel around cursor; Ctrl+`+`/`-`/`0` = in/out/fit-width). Image boundaries are not drawn; the strip reads as one image.
+- Overlays: every bubble's marker as a **thick cross** centred on its point — two strokes ~3 px wide and ~11 px long at 100% zoom, sized in screen pixels so it stays legible at any zoom (D-50). Colour by status: Untranslated gray, Draft amber, Translated green, Reviewed blue, Locked purple. The selected bubble's cross is drawn heavier with a contrasting halo so it is findable on busy art.
+- When a bubble is selected, its target part markers are drawn as smaller hollow crosses, numbered when the bubble is split.
+- Clicking within the **hit radius** (12 screen px) of a marker selects that bubble — nearest marker wins — and focuses its row in the segment list; selecting a row scrolls the strip so the marker is visible (centred when off-screen).
+- PageUp/PageDown scroll by one viewport height; Home/End jump to the start/end of the chapter.
 
 ### 14.3 Segment list
 
-Virtualized list, one row per bubble, global reading order across all pages (page separators as thin group headers). Two columns:
+Virtualized list, one row per bubble, in chapter-global reading order (`Order` ascending). There are no page group headers — the chapter is one continuous strip (D-49). Two columns:
 
-- **Source column** (read-mostly): first line shows `kind` glyph + character name (if set) in small text; below, the source text. `F2` (or double-click on the text) opens inline source-text editing (OCR fixes) — Enter commits, Esc cancels; source edits set no status change but mark dirty. Region create/delete/drag/resize is driven from this column's selection interacting with the image pane (§15).
+- **Source column** (read-mostly): first line shows `kind` glyph + character name (if set) in small text; below, the source text. `F2` (or double-click on the text) opens inline source-text editing (OCR fixes) — Enter commits, Esc cancels; source edits set no status change but mark dirty. Marker create/delete/move is driven from this column's selection interacting with the image pane (§15).
 - **Target column** (editable): the bubble's parts stacked vertically; each part is a text editor, text **center-aligned** (comic convention). Part editors: Enter = confirm bubble (§14.4); Shift+Enter = line break in the part; Tab/Shift+Tab = next/previous part (at the last/first part, Tab moves focus nowhere — beep). Row height grows with content.
 
 Row background reflects status color at low opacity. Locked bubbles: target read-only.
@@ -712,8 +743,8 @@ Top to bottom:
 | `Alt+1` / `Alt+2` / `Alt+3` | editor | Set target part count 1 / 2 / 3 (§15.3) |
 | `Alt+R` | popup visible | Accept repetition offer (§10) |
 | `Esc` | anywhere | Dismiss popup / cancel drag / cancel inline edit |
-| `Ctrl+B` | editor | Enter draw-new-bubble mode (§15.2) |
-| `Delete` | image pane, region selected | Delete bubble (confirm dialog) |
+| `Ctrl+B` | editor | Arm place-new-bubble mode; one click drops a marker (§15.2) |
+| `Delete` | image pane, bubble selected | Delete bubble (confirm dialog) |
 | `Ctrl+F` / `Ctrl+H` | editor | Find / replace in current chapter |
 | `Ctrl+Shift+F` / `Ctrl+Shift+H` | project open | Project-wide find / replace |
 | `F8` | editor | Run mechanical QA on chapter |
@@ -722,33 +753,55 @@ Top to bottom:
 | `Ctrl+Shift+K` | editor | Focus kind selector |
 | `Ctrl+Shift+C` | editor | Focus character box |
 | `Ctrl+Shift+N` | editor | Focus notes |
-| `PageUp` / `PageDown` | image pane focus | Previous / next page |
+| `PageUp` / `PageDown` | image pane focus | Scroll one viewport up / down |
+| `Home` / `End` | image pane focus | Jump to start / end of the chapter strip |
 | `Ctrl++` / `Ctrl+-` / `Ctrl+0` | image pane | Zoom in / out / fit width |
 
 All bindings live in one `KeyBindings` class (single source; no scattered literals). Conflicting Avalonia defaults are overridden.
 
 ---
 
-## 15. Regions and target split
+## 15. Markers and target split
 
-**Y-only rule (owner directive, D-36)**: the translation view is plain top-to-bottom LTR. Every automatic placement/ordering decision in the CAT — new-bubble order insertion (§15.2), default split-part placement (§15.3), auto-scroll targeting — uses **only the region's Y coordinate**. X (and width) are recorded faithfully, drawn as part of the region marker in the image pane, and fully editable, but no CAT logic branches on them. RTL and vertical-text considerations exist **only** in the deferred PSD export (§27.2). Do not implement any right-to-left or vertical-writing-aware behavior anywhere in the editor.
+**Markers, not regions (D-50).** A bubble is anchored by a single point — the top-left of where
+its text starts — drawn as a thick cross (§14.2). There is no width or height, no resize
+handles, and no attempt to trace an outline: comic text is often not rectangular at all (SFX
+especially), so a box was both inaccurate and extra work for the translator.
 
-### 15.1 Source region editing
+**Y-only rule (owner directive, D-36)**: the translation view is plain top-to-bottom LTR. Every
+automatic placement/ordering decision — new-bubble order insertion (§15.2), default split-part
+placement (§15.3), auto-scroll targeting — uses **only the marker's Y**. X is recorded
+faithfully, drawn, and freely movable, but no CAT logic branches on it. RTL and vertical-text
+considerations exist **only** in the deferred PSD export (§27.2). Do not implement any
+right-to-left or vertical-writing-aware behaviour anywhere in the editor.
 
-With a bubble selected (via list or click): its source region shows 8 resize handles + move cursor inside. Drag = move; handle drag = resize (min 8×8 px original-space; clamped to page bounds on commit). Geometry commits on mouse-up as one undo step. Only source regions are editable this way — **the source side always has exactly one region**.
+### 15.1 Moving a marker
+
+With a bubble selected (via list or click), dragging its cross moves it. There is nothing else
+to adjust. The move commits on mouse-up as one undo step, clamped to the strip on commit
+(`0 ≤ x < StripWidth`, `0 ≤ y < StripHeight`). Both source and target-part markers move this
+way; the source side always has exactly one marker.
 
 ### 15.2 Create / delete
 
-- **Create**: `Ctrl+B` or toolbar button arms draw mode (crosshair cursor); drag a rectangle on the image → new bubble: id per §5.3 D-03, kind `Speech`, status `Untranslated`, empty source/target, one part with region = source region. Its `Order`: inserted after the last existing bubble on that page whose region top-Y is above the new region's top-Y (ties: after); subsequent orders renumbered (D-17). Draw mode disarms after one create (hold Shift while releasing to stay armed).
-- **Delete**: `Delete` with region selected, or context menu on the row → confirm dialog (shows source text preview). Removes the bubble element; undoable.
+- **Create**: `Ctrl+B` or the toolbar button arms placement mode (crosshair cursor); **one click**
+  on the strip drops a new bubble there — id per §5.3 / D-03, kind `Speech`, status
+  `Untranslated`, empty source/target, one part whose marker equals the source marker. Its
+  `Order` is inserted after the last existing bubble whose marker Y is above the new one (ties:
+  after); subsequent orders renumber (D-17). Placement mode disarms after one create (hold
+  Shift while clicking to stay armed).
+- **Delete**: `Delete` with a bubble selected, or context menu on the row → confirm dialog
+  (shows source text preview). Removes the bubble element; undoable.
 
 ### 15.3 Target split
 
 - `Alt+2`/`Alt+3` set part count 2/3; `Alt+1` merges back. Max 3 enforced.
-- On increasing count: existing text stays in part 1; new parts empty. Default part regions: the source region divided into `n` equal **horizontal bands** top-to-bottom, part 1 topmost (D-18; owner-adjustable by drag).
-- On merging to 1: texts joined with `\n` into part 1; part 1 region reset to the source region.
-- Part regions are adjustable by drag/resize in the image pane whenever their bubble is selected (dashed rectangles, same handles).
-- The TM unit remains the whole bubble; split geometry never affects TM content.
+- On increasing count: existing text stays in part 1; new parts empty. Default part markers:
+  part 1 at the source marker, each later part offset **48 px further down** in strip
+  coordinates (D-18) so the crosses never land on top of one another; owner-adjustable by drag.
+- On merging to 1: texts joined with `\n` into part 1; part 1's marker resets to the source marker.
+- Part markers are movable in the image pane whenever their bubble is selected.
+- The TM unit remains the whole bubble; marker positions never affect TM content.
 
 ---
 
@@ -766,7 +819,7 @@ With a bubble selected (via list or click): its source region shows 8 resize han
 
 - Scopes: current chapter (`Ctrl+F/H`) or all chapters of the project (`Ctrl+Shift+F/H`). Project scope loads chapters read-only in the background (packages opened one at a time; replace requires opening for write).
 - Fields: search in Source / Target / Both (default Target for replace, Both for find). Options: case sensitive (off), regex (.NET `Regex`, off).
-- Find: results list (chapter, page, bubble id, snippet with highlight); Enter/double-click navigates (opens the chapter if needed).
+- Find: results list (chapter, bubble order, bubble id, snippet with highlight); Enter/double-click navigates (opens the chapter if needed).
 - Replace: replaces in target text only when the bubble is not `Locked`; each replacement sets status → `Draft` if it was `Translated`/`Reviewed` (edited-unconfirmed, Trados convention D-19), records undo entries. Replace-all reports count per chapter and saves modified non-open chapters immediately (atomic save).
 - Source replace is allowed only in chapter scope with a warning banner (OCR fix use case).
 
@@ -793,9 +846,9 @@ Native Core implementation with ClosedXML replicating the **business-proven layo
 
 - One chapter → one worksheet (sheet name = `meta/chapter`, fallback file stem). Exporting multiple chapters into one workbook = one sheet each, project chapter order.
 - Header row 1, background `#BFBFBF`, frozen: `A1=原件`, B1 empty, `C1=<source-language label>`, `D1=译文`, `E1=审校`, `F1=特殊要求备注`. The source label follows the project's **actual source language** (owner directive, D-33): lang class `zh` → `中文`, `ja` → `日文`, `ko` → `韩文`, `en` → `英文`, anything else → the BCP-47 tag verbatim. Column widths: A=60, C=30, D=30, E=15, F=15. C–F: wrap text, horizontal left, vertical center.
-- Per page (in page order): the media image downscaled to width 425 px (SkiaSharp, JPEG re-encode quality 90), anchored at column A of the page's start row (`XLPicturePlacement.Move`).
+- Per image (in strip order): the media image downscaled to width 425 px (SkiaSharp, JPEG re-encode quality 90), anchored at column A of that image's start row (`XLPicturePlacement.Move`).
 - Per bubble (reading order): `C` = source text, `D` = `TargetJoined`, `F` = notes (if any). Row chosen by the cumulative row-height walk against `regionTopY * (425/pageWidth) * 0.75`, skipping rows whose C is occupied (same algorithm as the existing tools); working row heights `lines*15.0` during layout, then **all row heights cleared** at the end.
-- Optional (default off, `settings.export.includeDataSheet`): a very-hidden sheet `_pigcomic` with full fidelity: columns `id, page, order, kind, character, status, x, y, width, height, source, target, notes` — one row per bubble (D-21).
+- Optional (default off, `settings.export.includeDataSheet`): a very-hidden sheet `_pigcomic` with full fidelity: columns `id, order, kind, character, status, x, y, source, target, notes` — one row per bubble (D-21).
 - Guarantee: running the §11 algorithm over the column-C cell values of this export equals PigComic's chapter MemoQ/MSWord source counts. (For `zh`-source projects the header is still `中文`, so the original LanMangaCount tool also produces the same numbers unchanged; for other source languages counting happens inside PigComic — the legacy tool's `中文`-header detection would not find the column, which the owner has accepted.)
 
 ---
@@ -818,11 +871,12 @@ Requirement: long vertical strips (e.g. 1000 × 40,000 px) and large spreads scr
 
 Architecture (validated by the M2 spike; deviations must be logged):
 
+- **Strip tiling**: the pyramid is built **per `<image>`**, and the control stacks them into one continuous scroll using `Chapter.Locate` — a viewport spanning an image boundary simply draws tiles from two pyramids. Tiling per image (rather than one pyramid over the whole strip) keeps each pyramid's dimensions inside the codec's limits and lets an image be decoded, cached and evicted independently.
 - **Pyramid**: level 0 = full resolution; level k halves each dimension; levels generated until max(width_k, height_k) ≤ 1024, minimum 2 downsampled levels always present. Tile size 512×512 (edge tiles smaller). Pure math (`TileKey(level,col,row)`, visible-set computation, level selection by zoom: smallest level whose scale ≥ current zoom) lives in `PigComic.Core/Imaging` with unit tests.
 - **Cache**: LRU keyed by (pageId, TileKey) holding `SKImage` tiles; byte budget default 384 MB (configurable); eviction on insert.
 - **Decode pipeline**: dedicated background worker(s) (2 threads) with a priority queue (priority = distance from viewport center; stale requests dropped). Level-k>0 tiles decode via `SKCodec` native scaled decode where supported; level 0 JPEG tiles via `SKCodecOptions.Subset` region decode. **PNG has no subset decode**: decode incrementally by scanline bands (512 rows at a time) emitting a tile row per band, never materializing the full bitmap; if incremental proves infeasible in the spike, fall back to one full decode → immediate slicing into cached tiles → drop, only for images whose full RGBA size ≤ 256 MB, and record the decision.
 - **Draw**: a custom `ICustomDrawOperation` draws all resident tiles intersecting viewport ± 1 tile margin at the chosen level, upscaling coarser-level tiles as placeholders for missing fine tiles; missing everything → flat gray. Tile arrival invalidates the control. Overlays (§14.2) draw in the same operation above tiles.
-- Page switch: cancel outstanding decodes for the old page; keep its tiles in cache (LRU handles eviction).
+- Scrolling far: cancel outstanding decodes for tiles that left the viewport margin; keep decoded tiles in cache (LRU handles eviction).
 
 Acceptance (M2): synthetic 1000×40000 JPEG and PNG strips scroll end-to-end with sustained ≥55 fps (frame timing logged), process working set stays under budget + 300 MB overhead, and no full-size `Bitmap` allocation appears in the code path.
 
@@ -894,7 +948,7 @@ thin/thick-underline flavor (memoQ, VSCode):
 ## 22. Undo/redo
 
 - Per open chapter, one undo stack (`IUndoableAction { Do(); Undo(); string Label; }`), depth cap 200.
-- Undoable: target text edits (coalesced per part until 1 s idle, focus change, or confirm), source text edits, status changes, kind/character/notes changes, region move/resize (one action per gesture), part count changes, bubble create/delete, order changes, find/replace replacements (replace-all in the open chapter = one composite action).
+- Undoable: target text edits (coalesced per part until 1 s idle, focus change, or confirm), source text edits, status changes, kind/character/notes changes, marker moves (one action per drag gesture), part count changes, bubble create/delete, order changes, find/replace replacements (replace-all in the open chapter = one composite action).
 - Not undoable: TM writes (undoing a confirm reverts status/text but the TM entry remains — D-23), saves, LLM comments (cleared via its button instead).
 - `Ctrl+Z/Ctrl+Y`. Stack cleared on chapter close; save does not clear it.
 
@@ -903,17 +957,17 @@ thin/thick-underline flavor (memoQ, VSCode):
 ## 23. Journal and crash recovery
 
 - File: `<file>.pcml.journal`, UTF-8 JSONL, sibling of the package.
-- **Confirm-only granularity** (owner directive, D-34 — the program must stay light with no per-keystroke I/O): exactly one line is appended, flushed to disk (`FileStream.Flush(flushToDisk: true)`), per **confirm action** (Enter / Ctrl+Enter / Ctrl+Shift+Enter, §14.4), written before the TM upsert. Nothing else journals. Consequence, accepted: a crash loses at most unconfirmed work since the last save/autosave (drafts, region tweaks, notes) — never a confirmed segment.
+- **Confirm-only granularity** (owner directive, D-34 — the program must stay light with no per-keystroke I/O): exactly one line is appended, flushed to disk (`FileStream.Flush(flushToDisk: true)`), per **confirm action** (Enter / Ctrl+Enter / Ctrl+Shift+Enter, §14.4), written before the TM upsert. Nothing else journals. Consequence, accepted: a crash loses at most unconfirmed work since the last save/autosave (drafts, marker moves, notes) — never a confirmed segment.
 - Line shape — a **full bubble snapshot**, sufficient to recreate the bubble from nothing:
   ```json
-  {"seq":1,"utc":"2026-08-22T10:00:00Z","op":"confirm","bubble":{"id":"p0001-b0001","page":"p0001","order":1,
-   "kind":"Speech","character":"ピッグ","status":"Translated","region":{"x":612,"y":480,"width":240,"height":310},
-   "source":"おはよう　ございます！","parts":[{"index":1,"region":{"x":612,"y":480,"width":240,"height":310},"text":"早安！"}],
+  {"seq":1,"utc":"2026-08-25T10:00:00Z","op":"confirm","bubble":{"id":"b0001","order":1,
+   "kind":"Speech","character":"小猪","status":"Translated","marker":{"x":612,"y":480},
+   "source":"早上好！","parts":[{"index":1,"marker":{"x":612,"y":480},"text":"おはようございます！"}],
    "notes":""}}
   ```
   `seq` strictly increasing from 1 per journal file.
 - On successful save (manual or autosave): delete the journal (a fresh one starts at seq 1 on the next confirm).
-- On opening a chapter with a journal present: the last session crashed → dialog "Recover N confirmed segments from <time of last line>? [Recover] [Discard] [Cancel]". Recover: **upsert** each snapshot in order — if the bubble id exists, overwrite all its fields from the snapshot; if not (bubble was created and confirmed but never saved), create it on the referenced page (skip with a warning count if the page id is unknown). Then immediately save and delete the journal. Discard: delete the journal. Cancel: don't open.
+- On opening a chapter with a journal present: the last session crashed → dialog "Recover N confirmed segments from <time of last line>? [Recover] [Discard] [Cancel]". Recover: **upsert** each snapshot in order — if the bubble id exists, overwrite all its fields from the snapshot; if not (bubble was created and confirmed but never saved), create it from the snapshot. Then immediately save and delete the journal. Discard: delete the journal. Cancel: don't open.
 - Corrupt trailing line (partial write): ignore the last line if it fails to parse; everything before it replays.
 
 ---
@@ -959,7 +1013,7 @@ Native Core implementations per §19. If the owner later prefers routing through
 
 ```csharp
 public interface IChapterXlsxExporter {
-    // openMedia(fileName) -> readable stream of the page image inside /media
+    // openMedia(fileName) -> readable stream of the strip image inside /media
     // resizeToJpeg(imageStream, targetWidth) -> 425px JPEG stream; supplied by the App (SkiaSharp stays out of Core)
     Task ExportAsync(IReadOnlyList<Chapter> chapters, Func<Chapter, string, Stream> openMedia,
                      Func<Stream, int, Stream> resizeToJpeg, string outPath, ExportOptions options, CancellationToken ct);
@@ -992,12 +1046,19 @@ Normative xunit theories (put in the named test classes):
 
 ### 27.1 Page add/remove/reorder in the CAT (M11)
 
-Schema already supports it: page order = element order; bubbles reference pages by id. Planned UI: page strip sidebar with drag reorder; add = file picker copying the image into `media/` (new `p####` id avoiding collisions); remove = only when no bubbles reference the page (else refuse with count). Page operations are not journaled (the journal is confirm-only, §23); they are protected by autosave.
+Schema already supports it: strip order = `<image>` element order, and nothing references an
+image by id. Planned UI: a thumbnail strip sidebar with drag reorder; add = file picker copying
+the image into `media/`; remove = only when no bubble marker falls inside that image's strip
+band (else refuse, listing the count). **Reordering or removing an image shifts every marker
+below it**, so those operations must rewrite marker Y values by the height delta in the same
+undo step — that is the one real cost of strip coordinates (D-49), and it is deliberate: it
+keeps every other read path trivial. Image operations are not journaled (the journal is
+confirm-only, §23); they are protected by autosave.
 
 ### 27.2 PSD export (premium, M11+)
 
-Per page: PSD canvas at **original** `page/@width×@height`; background layer = media image upscaled back to original size if it was downscaled; layer group `Typesetting` containing one text layer per target part, positioned at the part's region (original coordinates — this is why §5.6 fixes the coordinate space), text = part text, font = `settings.export.defaultFont`, size auto-fit to region height with line count from text. Writing PSD requires a PSD writer (the local `PsdParser` fork is read-oriented; Aspose.PSD or a minimal writer is an M11 decision — intentionally unresolved now).
+Per image: PSD canvas at **original** `image/@width×@height`; background layer = media image upscaled back to original size if it was downscaled; layer group `Typesetting` containing one text layer per target part whose marker falls in that image's strip band, positioned at `Chapter.Locate(marker.Y)`'s local Y and the marker's X (this is why §5.6 fixes the coordinate space), text = part text, font = `settings.export.defaultFont`. Because a marker has no height (D-50), the text layer is a point-anchored layer at its top-left and the font size comes from `settings.export`, not from a box. Writing PSD requires a PSD writer (the local `PsdParser` fork is read-oriented; Aspose.PSD or a minimal writer is an M11 decision — intentionally unresolved now).
 
 ### 27.3 `.pcml` generator (separate program, separate repo)
 
-The generator ("PcmlGen") lives in its own repo: **https://github.com/pig1800/pcmlgenerator** (local: `C:\PIG\src\pcmlgenerator`), with its own SPEC/PLAN/DECISIONS. It merges the OCR path (from TiaomanOCR, upgraded to capture full paragraph bounding boxes) and the PSD path (from PSDManga2XLSX + PsdParser, upgraded to capture full layer rectangles and full-resolution pages) into one drag-and-drop tool emitting §5 packages with deterministic ids. That repo carries a manually-synced snapshot of §5 as `docs/PCML_FORMAT.md`; **this section (§5) remains authoritative** — any format change here must be propagated to that snapshot.
+The generator ("PcmlGen") lives in its own repo: **https://github.com/pig1800/pcmlgenerator** (local: `C:\PIG\src\pcmlgenerator`), with its own SPEC/PLAN/DECISIONS. It merges the OCR path (from TiaomanOCR, taking each paragraph's top-left) and the PSD path (from PSDManga2XLSX + PsdParser, taking each text layer's top-left and full-resolution images) into one drag-and-drop tool emitting §5 packages with deterministic ids. That repo carries a manually-synced snapshot of §5 as `docs/PCML_FORMAT.md`; **this section (§5) remains authoritative** — any format change here must be propagated to that snapshot.

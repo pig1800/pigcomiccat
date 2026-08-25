@@ -284,24 +284,23 @@ internal static class SmokeTest
                 {
                     Thread.Sleep(20);
                     Avalonia.Threading.Dispatcher.UIThread.RunJobs();
-                    if (vm?.PageLabel.Contains("1 / 2") == true)
+                    if (vm?.Segments?.Items.Count > 0)
                     {
                         break;
                     }
                 }
 
-                var rendered = vm?.PageLabel.Contains("1 / 2") == true;
+                var rendered = vm?.Segments?.Items.Count > 0;
 
-                // M5.3: selecting the p0002 bubble from the list switches the page
-                // and the status bar shows the selected bubble. Use the real
-                // selection path (VM → SelectionChanged → EditorView).
+                // D-49: selecting a bubble that lives on the SECOND strip image must scroll
+                // the one continuous strip to it — there is no page to switch to. b0003's
+                // marker sits below the first image, so this exercises the strip mapping.
                 if (vm?.Segments is { } segs)
                 {
-                    segs.SelectBubbleId("p0002-b0001");
+                    segs.SelectBubbleId("b0003");
                     Dispatcher.UIThread.RunJobs();
                 }
 
-                var pageSwitched = vm?.PageLabel.Contains("2 / 2") == true;
                 var selectionLabel = vm?.SelectionLabel ?? "";
 
                 // M5.4: draft-on-typing + confirm loop through the real service.
@@ -320,12 +319,10 @@ internal static class SmokeTest
 
                 var segments = editor.FindControl<Views.SegmentListView>("SegmentList");
                 var segmentCount = -1;
-                var headerCount = -1;
                 var rowCount = -1;
                 if (segments?.DataContext is ViewModels.SegmentListViewModel sl)
                 {
                     segmentCount = sl.Items.Count;
-                    headerCount = sl.Items.OfType<ViewModels.SegmentPageHeaderViewModel>().Count();
                     rowCount = sl.Items.OfType<ViewModels.BubbleRowViewModel>().Count();
                 }
 
@@ -336,15 +333,10 @@ internal static class SmokeTest
                 editor.Close();
                 if (!rendered)
                 {
-                    return $"editor did not finish loading page 1 (PageLabel='{vm?.PageLabel}')";
+                    return "editor did not finish loading the chapter strip";
                 }
 
-                if (!pageSwitched)
-                {
-                    return $"selecting p0002 bubble did not switch page (PageLabel='{vm?.PageLabel}')";
-                }
-
-                if (!selectionLabel.Contains("p0002-b0001"))
+                if (!selectionLabel.Contains("b0003"))
                 {
                     return $"selection did not reach the status bar ('{selectionLabel}')";
                 }
@@ -359,9 +351,10 @@ internal static class SmokeTest
                     return "function pane did not receive the match-list view model";
                 }
 
-                return segmentCount == 5 && headerCount == 2 && rowCount == 3
+                // Three bubbles, no page headers (D-49): the list is flat.
+                return segmentCount == 3 && rowCount == 3
                     ? null
-                    : $"segment list wrong: {segmentCount} items, {headerCount} headers, {rowCount} rows (want 5/2/3)";
+                    : $"segment list wrong: {segmentCount} items, {rowCount} rows (want 3/3)";
             }
             finally
             {

@@ -24,7 +24,6 @@ public static class PcmlValidator
     private sealed class BubbleInfo
     {
         public List<Bubble> Bubbles { get; } = [];
-        public Dictionary<string, List<Bubble>> ByPage { get; } = [];
     }
 
     public static IReadOnlyList<PcmlIssue> Validate(PcmlDocument doc)
@@ -37,7 +36,7 @@ public static class PcmlValidator
             ValidateVersion(root, issues);
             ValidateMeta(root, issues);
             ValidateBubbles(doc, root, issues);
-            ValidatePages(doc, root, issues);
+            ValidateImages(doc, root, issues);
             ValidateCharacters(root, issues);
             FixW01(doc, issues);
             FixW02(doc, issues);
@@ -69,13 +68,22 @@ public static class PcmlValidator
         {
             Error(issues, "PCML-E02", $"@version is not an integer: '{version.Value}'.");
         }
-        else if (v > 1)
+        else if (v < 2)
         {
-            Error(issues, "PCML-E02", $"@version={v} is newer than supported schema version 1; opening read-only.");
+            // Version 1 was the paged, rectangle-region model. It never shipped — the
+            // generator that emits .pcml has not been built — so there is nothing to
+            // migrate from and guessing would silently mangle coordinates (D-49, D-50).
+            Error(issues, "PCML-E02",
+                $"@version={v} is the pre-strip schema (pages and rectangle regions); " +
+                "PigComic requires version 2. Regenerate the package.");
+        }
+        else if (v > 2)
+        {
+            Error(issues, "PCML-E02", $"@version={v} is newer than supported schema version 2; opening read-only.");
         }
     }
 
-    // ---------------------------------------------------------------- pages
+    // ---------------------------------------------------------------- images
 
     private static void ValidateMeta(XElement root, List<PcmlIssue> issues)
     {
@@ -95,41 +103,37 @@ public static class PcmlValidator
         }
     }
 
-    private static void ValidatePages(PcmlDocument doc, XElement root, List<PcmlIssue> issues)
+    private static void ValidateImages(PcmlDocument doc, XElement root, List<PcmlIssue> issues)
     {
-        var pagesEl = root.Element("pages");
-        if (pagesEl is null)
+        var imagesEl = root.Element("images");
+        if (imagesEl is null)
         {
-            Error(issues, "PCML-E01", "Missing required element <pages>.");
+            Error(issues, "PCML-E01", "Missing required element <images>.");
             return;
         }
 
-        var pageEls = pagesEl.Elements("page").ToList();
-        if (pageEls.Count == 0)
+        var imageEls = imagesEl.Elements("image").ToList();
+        if (imageEls.Count == 0)
         {
-            Error(issues, "PCML-E01", "<pages> must contain at least one <page>.");
+            // A chapter with no strip has nothing to position markers against (D-49).
+            Error(issues, "PCML-E04", "<images> must contain at least one <image>.");
+            return;
         }
 
-        var seenIds = new HashSet<string>();
-        foreach (var page in pageEls)
+        foreach (var image in imageEls)
         {
-            var id = (string?)page.Attribute("id") ?? "";
-            if (id.Length == 0)
+            var file = (string?)image.Attribute("file") ?? "";
+            if (image.Attribute("file") is null)
             {
-                Error(issues, "PCML-E01", "Missing required attribute @id on <page>.");
+                Error(issues, "PCML-E01", "Missing required attribute @file on <image>.");
             }
-            else if (!seenIds.Add(id))
+            else if (file.Contains('/') || file.Contains('\\'))
             {
-                Error(issues, "PCML-E03", $"Duplicate page id '{id}'.");
-            }
-
-            if (page.Attribute("file") is null)
-            {
-                Error(issues, "PCML-E01", $"Page '{id}': missing required attribute @file.");
+                Error(issues, "PCML-E05", $"Image '{file}': @file must not contain a path separator.");
             }
 
-            CheckPositiveIntAttr(page, "width", $"Page '{id}'", issues);
-            CheckPositiveIntAttr(page, "height", $"Page '{id}'", issues);
+            CheckPositiveIntAttr(image, "width", $"Image '{file}'", issues);
+            CheckPositiveIntAttr(image, "height", $"Image '{file}'", issues);
         }
     }
 
@@ -179,7 +183,7 @@ public static class PcmlValidator
                 Error(issues, "PCML-E03", $"Duplicate bubble id '{id}'.");
             }
 
-            foreach (var attrName in new[] { "page", "kind", "status", "order" })
+            foreach (var attrName in new[] { "kind", "status", "order" })
             {
                 if (el.Attribute(attrName) is null)
                 {
@@ -194,12 +198,6 @@ public static class PcmlValidator
                     $"Bubble '{id}': @order must be an integer ≥ 1 (got '{orderAttr.Value}').");
             }
 
-            var pageId = (string?)el.Attribute("page");
-            if (pageId is not null && !doc.Model.Pages.Any(p => p.Id == pageId))
-            {
-                Error(issues, "PCML-E04", $"Bubble '{id}' references unknown page '{pageId}'.");
-            }
-
             var kind = (string?)el.Attribute("kind");
             if (kind is not null && !KnownKinds.Contains(kind))
             {
@@ -212,14 +210,14 @@ public static class PcmlValidator
                 Error(issues, "PCML-E07", $"Bubble '{id}': unknown status '{status}'.");
             }
 
-            var regions = el.Elements("region").ToList();
-            if (regions.Count != 1)
+            var markers = el.Elements("marker").ToList();
+            if (markers.Count != 1)
             {
-                Error(issues, "PCML-E01", $"Bubble '{id}': must have exactly one <region> (found {regions.Count}).");
+                Error(issues, "PCML-E01", $"Bubble '{id}': must have exactly one <marker> (found {markers.Count}).");
             }
             else
             {
-                CheckRegionAttrs(regions[0], id, issues);
+                CheckMarkerAttrs(markers[0], id, issues);
             }
 
             if (el.Element("source") is null)
@@ -272,14 +270,14 @@ public static class PcmlValidator
                 continue;
             }
 
-            var region = part.Elements("region").ToList();
-            if (region.Count != 1)
+            var marker = part.Elements("marker").ToList();
+            if (marker.Count != 1)
             {
-                Error(issues, "PCML-E01", $"Bubble '{id}' part {i + 1}: must have exactly one <region> (found {region.Count}).");
+                Error(issues, "PCML-E01", $"Bubble '{id}' part {i + 1}: must have exactly one <marker> (found {marker.Count}).");
             }
             else
             {
-                CheckRegionAttrs(region[0], $"{id} part {i + 1}", issues);
+                CheckMarkerAttrs(marker[0], $"{id} part {i + 1}", issues);
             }
 
             if (part.Element("text") is null)
@@ -294,65 +292,38 @@ public static class PcmlValidator
         }
     }
 
-    private static void CheckRegionAttrs(XElement region, string where, List<PcmlIssue> issues)
+    private static void CheckMarkerAttrs(XElement marker, string where, List<PcmlIssue> issues)
     {
-        var intsOk = true;
-        foreach (var name in new[] { "x", "y", "width", "height" })
+        foreach (var name in new[] { "x", "y" })
         {
-            var attr = region.Attribute(name);
+            var attr = marker.Attribute(name);
             if (attr is null)
             {
-                Error(issues, "PCML-E01", $"{where}: missing required region attribute @{name}.");
-                intsOk = false;
+                Error(issues, "PCML-E01", $"{where}: missing required marker attribute @{name}.");
             }
             else if (!int.TryParse(attr.Value, out _))
             {
-                Error(issues, "PCML-E01", $"{where}: region attribute @{name} must be an integer (got '{attr.Value}').");
-                intsOk = false;
-            }
-        }
-
-        if (intsOk)
-        {
-            var w = int.Parse((string?)region.Attribute("width")!);
-            var h = int.Parse((string?)region.Attribute("height")!);
-            if (w < 1 || h < 1)
-            {
-                Error(issues, "PCML-E01", $"{where}: region width/height must be ≥ 1.");
+                Error(issues, "PCML-E01", $"{where}: marker attribute @{name} must be an integer (got '{attr.Value}').");
             }
         }
     }
 
     // ---------------------------------------------------------------- fixes
 
-    /// <summary>W01: duplicate orders within a page — renumber 1..n stably in memory.</summary>
+    /// <summary>W01: duplicate @order values — renumber 1..n stably in memory (chapter-global, D-49).</summary>
     private static void FixW01(PcmlDocument doc, List<PcmlIssue> issues)
     {
-        var pageOrder = new Dictionary<string, int>();
-        for (var i = 0; i < doc.Model.Pages.Count; i++)
+        var orders = doc.Model.Bubbles.Select(b => b.Order).ToList();
+        if (orders.Count == new HashSet<int>(orders).Count)
         {
-            pageOrder.TryAdd(doc.Model.Pages[i].Id, i);
+            return;
         }
 
-        var byPage = doc.Model.Bubbles
-            .GroupBy(b => b.PageId)
-            .ToDictionary(g => g.Key, g => g.ToList());
-
-        foreach (var (pageId, bubbles) in byPage.OrderBy(kv => pageOrder.TryGetValue(kv.Key, out var i) ? i : int.MaxValue))
+        Warning(issues, "PCML-W01", "Duplicate bubble @order values; renumbering in memory.");
+        var ordered = doc.Model.Bubbles.OrderBy(b => b.Order).ToList();
+        for (var i = 0; i < ordered.Count; i++)
         {
-            var orders = bubbles.Select(b => b.Order).ToList();
-            if (orders.Count == new HashSet<int>(orders).Count)
-            {
-                continue;
-            }
-
-            Warning(issues, "PCML-W01",
-                $"Page '{pageId}': duplicate bubble @order values; renumbering in memory.");
-            var ordered = bubbles.OrderBy(b => b.Order).ToList();
-            for (var i = 0; i < ordered.Count; i++)
-            {
-                ordered[i].Order = i + 1;
-            }
+            ordered[i].Order = i + 1;
         }
     }
 
@@ -375,38 +346,30 @@ public static class PcmlValidator
         }
     }
 
-    /// <summary>W03: region fully outside its page bounds.</summary>
+    /// <summary>W03: marker outside the strip (D-49).</summary>
     private static void CheckW03(PcmlDocument doc, List<PcmlIssue> issues)
     {
-        var pageById = new Dictionary<string, Page>();
-        foreach (var p in doc.Model.Pages)
-        {
-            pageById.TryAdd(p.Id, p);
-        }
+        var height = doc.Model.StripHeight;
+        var width = doc.Model.StripWidth;
+
         foreach (var bubble in doc.Model.Bubbles)
         {
-            if (!pageById.TryGetValue(bubble.PageId, out var page))
-            {
-                continue;
-            }
-
-            var r = bubble.SourceRegion;
-            var fullyOutside = r.X + r.Width <= 0 || r.Y + r.Height <= 0 || r.X >= page.Width || r.Y >= page.Height;
-            if (fullyOutside)
+            var m = bubble.Marker;
+            if (m.X < 0 || m.Y < 0 || m.X >= width || m.Y >= height)
             {
                 Warning(issues, "PCML-W03",
-                    $"Bubble '{bubble.Id}': region ({r.X},{r.Y},{r.Width}×{r.Height}) is fully outside page {page.Width}×{page.Height}.");
+                    $"Bubble '{bubble.Id}': marker ({m.X},{m.Y}) is outside the {width}×{height} strip.");
             }
         }
     }
 
-    /// <summary>E05/W04: page files vs media entries.</summary>
+    /// <summary>E05/W04: image files vs media entries.</summary>
     private static void ValidateMedia(PcmlDocument doc, List<PcmlIssue> issues)
     {
         var referenced = new HashSet<string>();
-        foreach (var page in doc.Model.Pages)
+        foreach (var image in doc.Model.Images)
         {
-            var file = page.FileName;
+            var file = image.FileName;
             if (file.Length == 0)
             {
                 continue;
@@ -414,14 +377,14 @@ public static class PcmlValidator
 
             if (file.Contains('/') || file.Contains('\\'))
             {
-                Error(issues, "PCML-E05", $"Page '{page.Id}': @file must not contain path separators ('{file}').");
+                Error(issues, "PCML-E05", $"Image '{file}': @file must not contain path separators.");
                 continue;
             }
 
             referenced.Add(file);
             if (!doc.MediaEntries.Any(m => m.Name == $"media/{file}"))
             {
-                Error(issues, "PCML-E05", $"Page file '{file}' is missing from media/.");
+                Error(issues, "PCML-E05", $"Image file '{file}' is missing from media/.");
             }
         }
 
@@ -430,7 +393,7 @@ public static class PcmlValidator
             if (entry.Name.StartsWith("media/", StringComparison.Ordinal) &&
                 !referenced.Contains(entry.Name["media/".Length..]))
             {
-                Warning(issues, "PCML-W04", $"Media entry '{entry.Name}' is not referenced by any page.");
+                Warning(issues, "PCML-W04", $"Media entry '{entry.Name}' is not referenced by any image.");
             }
         }
     }

@@ -25,7 +25,6 @@ public partial class EditorView : Window
     private readonly EditorViewModel _vm;
     private ChapterSession? _session;
     private bool _closed;
-    private int _currentPageIndex;
     private TmStore? _tm;
     private TbStore? _tb;
     private ConfirmService? _confirm;
@@ -43,7 +42,8 @@ public partial class EditorView : Window
         Closed += OnClosed;
         ApplyStoredLayout();
         ImagePane.OverlayClicked += OnOverlayClicked;
-        ImagePane.PageNavigationRequested += OnPageNavigationRequested;
+        ImagePane.ScrollRequested += OnScrollRequested;
+        ImagePane.StripPositionChanged += y => _vm.SetStripPosition(y);
         _ = LoadAsync();
     }
 
@@ -130,7 +130,7 @@ public partial class EditorView : Window
                     "OK", null).ConfigureAwait(true);
             }
 
-            LoadPage(session, 0);
+            LoadStrip(session);
         }
         catch (Exception ex)
         {
@@ -138,27 +138,29 @@ public partial class EditorView : Window
         }
     }
 
-    /// <summary>Renders one page of the chapter into the tiled image pane (with overlays).</summary>
-    private void LoadPage(ChapterSession session, int pageIndex)
+    /// <summary>Installs the whole chapter as one continuous strip (D-49).</summary>
+    private void LoadStrip(ChapterSession session)
     {
-        var pages = session.Document.Model.Pages;
-        if (pageIndex < 0 || pageIndex >= pages.Count)
-        {
-            return;
-        }
-
-        _currentPageIndex = pageIndex;
-        var page = pages[pageIndex];
+        var chapter = session.Document.Model;
         try
         {
-            var path = session.PageImagePath(page.FileName);
-            if (path is not null)
+            var segments = new List<StripSegment>();
+            foreach (var image in chapter.Images)
             {
-                ImagePane.SetImage(path);
+                var path = session.PageImagePath(image.FileName);
+                if (path is not null)
+                {
+                    segments.Add(new StripSegment(path, image.Width, image.Height, image.StripTop));
+                }
+            }
+
+            if (segments.Count > 0)
+            {
+                ImagePane.SetStrip(segments);
             }
 
             RefreshOverlays();
-            _vm.SetCurrentPage(pageIndex);
+            _vm.SetStripPosition(0);
         }
         catch (Exception ex)
         {
@@ -166,7 +168,7 @@ public partial class EditorView : Window
         }
     }
 
-    /// <summary>Rebuilds the overlay list for the current page (SPEC §14.2).</summary>
+    /// <summary>Rebuilds the marker overlays for the whole strip (SPEC §14.2).</summary>
     private void RefreshOverlays()
     {
         if (_session is null)
@@ -175,26 +177,26 @@ public partial class EditorView : Window
         }
 
         var chapter = _session.Document.Model;
-        var page = chapter.Pages[_currentPageIndex];
         var selected = _vm.Segments?.SelectedBubble;
 
-        var overlays = new List<OverlayRect>();
-        foreach (var bubble in chapter.Bubbles.Where(b => b.PageId == page.Id))
+        var overlays = new List<OverlayMarker>();
+        foreach (var bubble in chapter.Bubbles)
         {
             var isSelected = selected is not null && selected.Id == bubble.Id;
-            overlays.Add(new OverlayRect(
+            overlays.Add(new OverlayMarker(
                 bubble.Id,
-                new Rect(bubble.SourceRegion.X, bubble.SourceRegion.Y, bubble.SourceRegion.Width, bubble.SourceRegion.Height),
+                new Avalonia.Point(bubble.Marker.X, bubble.Marker.Y),
                 bubble.Status,
                 isSelected,
-                isSelected ? bubble.Parts.Select(p =>
-                    new Rect(p.Region.X, p.Region.Y, p.Region.Width, p.Region.Height)).ToList() : null));
+                isSelected
+                    ? bubble.Parts.Select(p => new Avalonia.Point(p.Marker.X, p.Marker.Y)).ToList()
+                    : null));
         }
 
-        ImagePane.SetOverlays(overlays, page.Width);
+        ImagePane.SetOverlays(overlays);
     }
 
-    /// <summary>Row selected in the list → switch page + center (SPEC §14.2).</summary>
+    /// <summary>Row selected in the list → scroll the strip to its marker (SPEC §14.2).</summary>
     private void OnBubbleSelectionChanged(BubbleRowViewModel? row)
     {
         if (_statusRow is not null)
@@ -214,41 +216,19 @@ public partial class EditorView : Window
             return;
         }
 
-        if (row is null)
-        {
-            RefreshOverlays();
-            return;
-        }
+        RefreshOverlays();
 
-        var pages = _session.Document.Model.Pages;
-        var idx = pages.Select((p, i) => (p, i)).FirstOrDefault(t => t.p.Id == row.PageId).i;
-        if (_currentPageIndex != idx)
+        if (row is not null)
         {
-            LoadPage(_session, idx);
+            ImagePane.CenterOn(new Avalonia.Point(row.Bubble.Marker.X, row.Bubble.Marker.Y));
         }
-        else
-        {
-            RefreshOverlays();
-        }
-
-        ImagePane.CenterOn(new Rect(
-            row.Bubble.SourceRegion.X, row.Bubble.SourceRegion.Y,
-            row.Bubble.SourceRegion.Width, row.Bubble.SourceRegion.Height));
     }
 
     /// <summary>Image click → select the row (list auto-scrolls via selection binding).</summary>
     private void OnOverlayClicked(string bubbleId)
         => _vm.Segments?.SelectBubbleId(bubbleId);
 
-    private void OnPageNavigationRequested(int delta)
-    {
-        if (_session is not null &&
-            _session.Document.Model.Pages.Count > 0)
-        {
-            LoadPage(_session, (_currentPageIndex + delta + _session.Document.Model.Pages.Count)
-                              % _session.Document.Model.Pages.Count);
-        }
-    }
+    private void OnScrollRequested(int delta) => ImagePane.ScrollByViewports(delta);
 
     /// <summary>Opens the project's TM/TB stores when a project folder is known (SPEC §7/§8).</summary>
     private void OpenStores(ChapterSession session)

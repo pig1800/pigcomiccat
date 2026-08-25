@@ -20,6 +20,13 @@ is not marked done.
 | M6 – M11 | ⏸ open after the M5 batch |
 | M-TSF (TSF text store) | ⏸ not started; Q7 resolved — stays scheduled after M6 (IMM32 path carries JA/ATOK today) |
 
+> **Model reform, 2026-08-25 (D-49/D-50/D-51).** A chapter no longer has pages: its images
+> are one continuous strip and every coordinate is a chapter-global strip coordinate. A
+> bubble is anchored by a **point** drawn as a thick cross, not a rectangle. The default
+> language pair is **zh-CN -> ja**. `.pcml` is schema **version 2**; version 1 is rejected,
+> not migrated (it never shipped). Task text below that predates the reform has been updated;
+> if you find a leftover mention of pages or regions, the SPEC wins — fix the plan.
+
 Verified baseline at that commit: `dotnet build PigComic.sln` clean, **213/213 tests**,
 **`--smoke` 19/19**. If those numbers differ when you start, something regressed — find out
 what before touching anything else.
@@ -84,18 +91,18 @@ Milestone order is risk-ordered and fixed. M2 was the gate for M5–M11; it reco
 ## M1 — Core data model + `.pcml` read/write ✅ DONE (do not redo)
 
 ### M1.1 Domain types
-- **Files**: `src/PigComic.Core/Domain/` — `BubbleKind.cs`, `BubbleStatus.cs`, `PixelRect.cs`, `TargetPart.cs`, `Bubble.cs`, `Page.cs`, `Chapter.cs`.
+- **Files**: `src/PigComic.Core/Domain/` — `BubbleKind.cs`, `BubbleStatus.cs`, `PixelPoint.cs`, `TargetPart.cs`, `Bubble.cs`, `ChapterImage.cs`, `Chapter.cs`.
 - **Behavior**: exactly SPEC §4 (types may be XElement-backed later; for now plain properties + the invariants: parts 1..3, `TargetJoined` join with `\n`).
 - **Acceptance**: `DomainTests` — constructing a bubble with 0 or 4 parts throws; `TargetJoined` of parts ["a","b"] == "a\nb".
 
 ### M1.2 Pcml load (zip + XML → model)
 - **Files**: `src/PigComic.Core/Package/PcmlDocument.cs`, `PcmlLoadException.cs`.
-- **Behavior**: `PcmlDocument.Open(path)` opens the zip, loads `content.xml` into an `XDocument` (kept per SPEC §5.8), builds XElement-backed domain objects (property setters write through to the element), sorts bubbles by (page order, order). Media entries enumerated (names + sizes), not decoded. Text values read verbatim; CRLF normalized to LF on read.
-- **Acceptance**: `PcmlLoadTests` — loading a fixture zip containing SPEC §5.4's example XML yields: 2 pages in order, 3 bubbles sorted, bubble `p0001-b0002` has 2 parts, character `ピッグ` on b0001, `llmComment` non-empty on b0002.
+- **Behavior**: `PcmlDocument.Open(path)` opens the zip, loads `content.xml` into an `XDocument` (kept per SPEC §5.8), builds XElement-backed domain objects (property setters write through to the element), sorts bubbles by `@order` across the chapter. Media entries enumerated (names + sizes), not decoded. Text values read verbatim; CRLF normalized to LF on read.
+- **Acceptance**: `PcmlLoadTests` — loading a fixture zip containing SPEC §5.4's example XML yields: 2 images in strip order (StripTop 0 and 41250), 3 bubbles sorted by order, `Locate(41450)` = image 1 local Y 200, bubble `b0002` has 2 parts, character `ピッグ` on b0001, `llmComment` non-empty on b0002.
 
 ### M1.3 Test fixture builder
 - **Files**: `tests/PigComic.Core.Tests/PcmlTestBuilder.cs`, `tests/PigComic.Core.Tests/Fixtures/example1/content.xml` (SPEC §5.4 verbatim) + two tiny placeholder images.
-- **Behavior**: builder API `PcmlTestBuilder.New(title, srcLang, tgtLang).Page(id,file,w,h).Bubble(id,page,order,...)...BuildZip(path)` producing valid packages in temp dirs; also `BuildFromXmlString`.
+- **Behavior**: builder API `PcmlTestBuilder.New(title, srcLang, tgtLang).Image(file,w,h).Bubble(id,order,...)...BuildZip(path)` producing valid packages in temp dirs; also `BuildFromXmlString`.
 - **Acceptance**: builder output opens via `PcmlDocument.Open` with zero validation issues.
 
 ### M1.4 Validation
@@ -110,8 +117,8 @@ Milestone order is risk-ordered and fixed. M2 was the gate for M5–M11; it reco
 
 ### M1.6 Mutation API surface
 - **Files**: `src/PigComic.Core/Package/PcmlDocument.cs` (methods), `src/PigComic.Core/Package/BubbleMutations.cs`.
-- **Behavior**: typed mutations used by the UI and undo system later: `SetSource`, `SetPartText`, `SetPartCount` (§15.3 semantics incl. default band regions D-18), `SetStatus`, `SetKind`, `SetCharacter` (auto-adds to chapter characters), `SetNotes`, `SetLlmComment`, `SetSourceRegion`, `SetPartRegion`, `AddBubble` (id gen `u`+8hex collision-checked, order insertion per §15.2/D-17), `DeleteBubble`, `SetOrder`. Each returns a `MutationRecord` (op name + payload) for undo reuse.
-- **Acceptance**: `MutationTests` — `SetPartCount(3→1)` joins texts with `\n` and resets region to source region; `AddBubble` on a page with bubbles at top-Y 100/500 and new region top-Y 300 gets order between them and renumbers; `SetCharacter("新角色")` adds to `<characters>`.
+- **Behavior**: typed mutations used by the UI and undo system later: `SetSource`, `SetPartText`, `SetPartCount` (§15.3 semantics incl. stacked default markers D-18), `SetStatus`, `SetKind`, `SetCharacter` (auto-adds to chapter characters), `SetNotes`, `SetLlmComment`, `SetMarker`, `SetPartMarker`, `AddBubble` (id gen `u`+8hex collision-checked, order insertion per §15.2/D-17), `DeleteBubble`, `SetOrder`. Each returns a `MutationRecord` (op name + payload) for undo reuse.
+- **Acceptance**: `MutationTests` — `SetPartCount(3→1)` joins texts with `\n` and resets part 1's marker to the source marker; `AddBubble` in a chapter with markers at Y 100/500 and a new marker at Y 300 gets order between them and renumbers; `SetCharacter("新角色")` adds to `<characters>`.
 
 ---
 
@@ -249,7 +256,7 @@ Milestone order is risk-ordered and fixed. M2 was the gate for M5–M11; it reco
 
 ### M5.1 Editor shell + chapter open ✅ PASSED owner acceptance 2026-08-24
 - **Files**: `src/PigComic.App/Views/EditorView.axaml(.cs)`, `ViewModels/EditorViewModel.cs`, `Services/ChapterSession.cs` (owns PcmlDocument, dirty flag, save).
-- **Behavior**: SPEC §14.1 three-pane layout with splitters (persisted); opens a chapter: validation gate (§5.7 read-only rule), image pane shows page 1 via `TiledImageControl`, status bar fields. If a `.pcml.journal` exists at open, show an interim two-button dialog — [Discard] (deletes the journal, opens the chapter) / [Cancel] (aborts opening); the full three-button [Recover] dialog replaces this in M9.2 per SPEC §23.
+- **Behavior**: SPEC §14.1 three-pane layout with splitters (persisted); opens a chapter: validation gate (§5.7 read-only rule), image pane shows the chapter strip via `TiledImageControl`, status bar fields. If a `.pcml.journal` exists at open, show an interim two-button dialog — [Discard] (deletes the journal, opens the chapter) / [Cancel] (aborts opening); the full three-button [Recover] dialog replaces this in M9.2 per SPEC §23.
 - **Acceptance** (manual): open the M1.3 example chapter → three panes, page image renders, status bar correct. **Owner: PASSED 2026-08-24.** (Wheel scroll asked about — it is implemented per SPEC §14.2 and was verified by injecting real WM_MOUSEWHEEL messages into the live editor via a harness: the pane offset moved 40 px/notch. The strip is a tiled canvas with no scrollbar by design; during the first ~1 s after open the 160 MB strip decodes and tiles render gray, which can look like "nothing there" if scrolled mid-decode.)
 - **Delivered 2026-08-24**: EditorView (Grid + two GridSplitters with `DragCompleted` persisting widths into registry.json via `Services/EditorLayoutStore` — spec-compatible enum is `ResizeDirection="Columns"` on Avalonia 12), ChapterSession (dirty flag, save delegate, journal Discard gate, media extraction to `%TEMP%/pigcomic-media/<hash>` with length-verified reuse — TiledImageControl needs a real file path and Core stays untouched), EditorViewModel (status-bar state; no business logic). Validation issues surfaced once (§5.7: Errors → read-only + issue list, Warnings → shown-once list). `ProjectView` "Open chapter" now opens the editor (was a placeholder). Debug menu "Editor: open example chapter" builds a real 2-page/3-bubble `.pcml` around the strip media (`Services/ExampleChapterBuilder`) so the manual acceptance is clickable. Smoke +1 check (EditorView constructs + missing-chapter banner; also in the PartTextEditor scan list). Build/test/smoke green: 213/213, smoke 18/18.
 - **Crash fix 2026-08-24 (owner-run, two crashes in the first editor session)**:
@@ -259,14 +266,14 @@ Milestone order is risk-ordered and fixed. M2 was the gate for M5–M11; it reco
 
 ### M5.2 Segment list — CODE DONE 2026-08-24 (manual acceptance pending: owner)
 - **Files**: `src/PigComic.App/Views/SegmentListView.axaml(.cs)`, `ViewModels/SegmentListViewModel.cs`, `BubbleRowViewModel.cs`.
-- **Behavior**: SPEC §14.3 (virtualized, page group headers, source column content, status row tint; target column read-only placeholder this task).
+- **Behavior**: SPEC §14.3 (virtualized, one flat reading-order list with no page headers, source column content, status row tint; target column read-only placeholder this task).
 - **Acceptance** (manual): example chapter lists 3 rows under 2 page headers in reading order; selection with `Ctrl+Up/Down` works and status bar updates.
 - **Delivered 2026-08-24**: `SegmentListView` (ListBox with two type-keyed DataTemplates — page headers + bubble rows), `SegmentListViewModel` (flat reading-order item list, Ctrl+Up/Down via a central move, `MoveNext(skipConfirmed)` for the confirm loop), `BubbleRowViewModel` (status tint brush per §14.3; part cells; source F2-edit state). Selection flows to the status bar and the image pane. The kind "glyph" is rendered as the kind name text (no invented glyph mapping — spec silent; noted here rather than guessed).
 
 ### M5.3 Image pane overlays + selection sync — CODE DONE 2026-08-24 (manual acceptance pending: owner)
 - **Files**: `src/PigComic.App/Controls/TiledImageControl.cs` (overlay layer), `ViewModels/ImagePaneViewModel.cs`.
-- **Behavior**: SPEC §14.2 (status-colored source region outlines, selected style, dashed part regions, click-to-select with smallest-topmost rule, auto-scroll/page-switch to selection, media scale factor §5.6).
-- **Acceptance** (manual): clicking each region selects its row; selecting the p0002 bubble from the list switches page and centers the region; a package whose media is a 50%-downscaled copy still draws overlays on the right spots (make one with the test builder).
+- **Behavior**: SPEC §14.2 (status-coloured marker crosses, selected style, part crosses when selected, click-to-select nearest marker within the hit radius, auto-scroll to selection, media scale factor §5.6).
+- **Acceptance** (manual): clicking each cross selects its row; selecting a bubble whose marker is on the second strip image scrolls there (no page switch, D-49); a package whose media is a 50%-downscaled copy still draws overlays on the right spots (make one with the test builder).
 - **Delivered 2026-08-24**: overlay layer inside `TiledImageControl` (`OverlayRect` + `SetOverlays(overlays, pageWidth)`; §5.6 scale = decoded media width / page width), click hit-testing with the smallest-topmost rule (`OverlayClicked`), `CenterOn(originalRegion)` for off-screen centering, PageUp/PageDown on the image pane (`PageNavigationRequested`). The editor wires selection both ways: list→(page switch + center + overlays), image click→list select. (Note: `ImagePaneViewModel` was folded into the editor wiring — no UI-less value yet; will appear with M6 interaction state.)
 
 ### M5.4 Target editor + confirm loop — CODE DONE 2026-08-24 (manual acceptance pending: owner; IME §21 items 1–4 need a real IME session)
@@ -284,32 +291,32 @@ Milestone order is risk-ordered and fixed. M2 was the gate for M5–M11; it reco
 ### M5.6 Keyboard map + save/autosave — CODE DONE 2026-08-24 (manual acceptance pending: owner)
 - **Files**: `src/PigComic.App/KeyBindings.cs`, wiring in EditorView; `Services/AutosaveTimer.cs`.
 - **Behavior**: every §14.6 binding not yet wired (F2 source edit, zoom keys, PageUp/Down, Esc, focus jumps); Ctrl+S manual save; autosave per §5.5/§6.2 with status-bar "Saved HH:mm" / dirty dot.
-- **Acceptance** (manual): run through §24's keyboard-only loop on the example chapter without touching the mouse (except region drawing) — every step succeeds; killing the app after an edit and before autosave leaves `.pcml` unchanged (journal comes in M9); waiting 3+ min autosaves (set `autosaveSeconds: 10` for the test).
+- **Acceptance** (manual): run through §24's keyboard-only loop on the example chapter without touching the mouse (except placing markers) — every step succeeds; killing the app after an edit and before autosave leaves `.pcml` unchanged (journal comes in M9); waiting 3+ min autosaves (set `autosaveSeconds: 10` for the test).
 - **Delivered 2026-08-24**: `KeyBindings` (single source: save/F2/Ctrl+Up/Down/nth-match/confirm variants — the window's own `KeyBindings` member is shadowed, so handlers reach `PigComic.App.KeyBindings` by full name), `AutosaveTimer` (interval from `project.json` settings, default 180 s, only when dirty; "Saved HH:mm" in the status bar), Ctrl+S in `EditorView.OnKeyDown`, F2 inline source editing (`BubbleRowViewModel.Start/Commit/CancelSourceEdit` — Enter commits / Esc cancels, no status change, marks dirty; double-click on the source also opens it), Ctrl+1..9 routed once at the window (numpad accepted). PageUp/PageDown + zoom were already on the image pane (M5.3/M2.4). Remaining un-wired §14.6 map items (all M6+): Alt+1/2/3 split, Ctrl+B draw, Delete bubble, F8 QA, Ctrl+F/H find, Ctrl+Z/Y undo, Ctrl+Shift+K/C/N focus jumps.
 
 ---
 
-## M6 — Region editing + target split
+## M6 — Marker editing + target split
 
-### M6.1 Region move/resize
-- **Files**: `src/PigComic.App/Controls/RegionInteraction.cs` (hit-test + drag state machine), TiledImageControl integration.
-- **Behavior**: SPEC §15.1 (8 handles, min size, clamp on commit, one undo record per gesture via M1.6 `SetSourceRegion`).
-- **Acceptance** (manual): drag/resize each example bubble; Esc mid-drag reverts; saved file shows new coordinates (unzip and inspect).
+### M6.1 Marker move
+- **Files**: `src/PigComic.App/Controls/MarkerInteraction.cs` (hit-test + drag state machine), TiledImageControl integration.
+- **Behavior**: SPEC §15.1 (drag the cross to move it; no handles and no resize; clamp to the strip on commit; one undo record per drag via M1.6 `SetMarker`).
+- **Acceptance** (manual): drag each example bubble's cross; Esc mid-drag reverts; saved file shows new marker coordinates (unzip and inspect).
 
 ### M6.2 Create bubble
-- **Files**: `RegionInteraction.cs` (draw mode), `EditorViewModel` command.
-- **Behavior**: SPEC §15.2 create (Ctrl+B arm, drag, id/order rules, Shift-hold repeat).
-- **Acceptance** (manual): draw a region between two existing bubbles → new row appears between them with kind Speech/Untranslated; saved XML has `u`-prefixed id and renumbered orders.
+- **Files**: `MarkerInteraction.cs` (placement mode), `EditorViewModel` command.
+- **Behavior**: SPEC §15.2 create (Ctrl+B arm, single click drops the marker, id/order rules, Shift-hold repeat).
+- **Acceptance** (manual): click between two existing markers -> new row appears between them with kind Speech/Untranslated; saved XML has `u`-prefixed id and renumbered orders.
 
 ### M6.3 Delete bubble
 - **Files**: `EditorViewModel` command + confirm dialog.
 - **Behavior**: SPEC §15.2 delete.
-- **Acceptance** (manual): Delete removes row+overlay; Ctrl+Z restores it fully (after M9 undo exists — until then acceptance is: removed and persisted correctly on save; amend this acceptance to include undo when M9 lands).
+- **Acceptance** (manual): Delete removes row+cross; Ctrl+Z restores it fully (after M9 undo exists — until then acceptance is: removed and persisted correctly on save; amend this acceptance to include undo when M9 lands).
 
 ### M6.4 Target split parts
 - **Files**: `ViewModels/SegmentListViewModel.cs` + `PartTextEditor` Tab handling + `EditorViewModel` Alt+1/2/3 commands (Core work already in M1.6).
-- **Behavior**: SPEC §15.3 (band defaults, merge join, Tab/Shift+Tab, part region drag).
-- **Acceptance** (manual): Alt+3 on a bubble shows 3 stacked editors and 3 dashed bands; text typed in parts round-trips through save; Alt+1 merges with `\n`s; TM write after confirm stores the joined target (verify via match box on a twin bubble).
+- **Behavior**: SPEC §15.3 (stacked marker defaults, merge join, Tab/Shift+Tab, part marker drag).
+- **Acceptance** (manual): Alt+3 on a bubble shows 3 stacked editors and 3 part crosses 48 px apart; text typed in parts round-trips through save; Alt+1 merges with `\n`s; TM write after confirm stores the joined target (verify via match box on a twin bubble).
 
 ---
 

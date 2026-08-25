@@ -14,13 +14,7 @@
                  Background="Transparent"
                  ContainerPrepared="OnContainerPrepared">
             <ListBox.DataTemplates>
-                <DataTemplate x:DataType="vm:SegmentPageHeaderViewModel">
-                    <Border Background="#22000000" Padding="8,3" Margin="0,6,0,0">
-                        <TextBlock Text="{Binding Heading}" FontSize="12" FontWeight="SemiBold"
-                                   Foreground="#CC000000"/>
-                    </Border>
-                </DataTemplate>
-
+                <!-- No page group headers: a chapter is one continuous strip (D-49). -->
                 <DataTemplate x:DataType="vm:BubbleRowViewModel">
                     <Border Background="{Binding Tint}" Padding="6,4">
                         <Grid ColumnDefinitions="*,1.2*" Margin="0,2">

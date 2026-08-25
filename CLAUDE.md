@@ -71,6 +71,9 @@ The project moved from Avalonia 11 to 12; older snippets, blog posts, and your o
 - Never leave a half-written `.pcml`: all package writes go through the atomic save path (SPEC §5.5).
 - `content.xml` round-trip must preserve unknown elements/attributes/zip entries (SPEC §5.8 — the XDocument is the model).
 - Bubble IDs are never renumbered or reused. `Order` may be renumbered; ids may not.
+- **A chapter has no pages** (D-49): its images are one continuous vertical strip and every coordinate is a chapter-global strip coordinate (SPEC §5.6). `Chapter.Locate(stripY)` is the only way back to a file, and only the tiled renderer and PSD export need it. Do not reintroduce a page concept in the model, the segment list, or navigation.
+- **A bubble is a point, not a rectangle** (D-50): `PixelPoint` markers drawn as thick crosses, one click to create, drag to move, no resize. Comic text is often not rectangular (SFX especially), so a box was inaccurate and pointless work.
+- Default language pair is **zh-CN → ja** (D-51) — dialogs, fixtures and examples.
 - TM writes happen only on confirm; never auto-fill or auto-propagate a translation (repetitions are offered via popup only, SPEC §10).
 - No LLM pretranslation feature. LLM = on-demand QA comments only (SPEC §13) via `ILlmClient`; the app must fully work with the stub.
 - M2 was a gate: it PASSED 6/6 on 2026-08-24 (`docs/IME_REPORT.md`). Do not reopen the IME stack casually — read `docs/IME_HANDOFF.md` §5 first; it lists the traps that have already cost three sessions.

@@ -24,13 +24,13 @@ public class MutationTests : IDisposable
 
     private PcmlDocument OpenValid()
     {
-        var path = PcmlTestBuilder.New("t", "ja", "zh-Hant").Chapter("1")
+        var path = PcmlTestBuilder.New("t", "zh-CN", "ja").Chapter("1")
             .Character("ピッグ")
-            .Page("p1", "a.jpg", 1000, 2000)
-            .Bubble("p1-b1", "p1", 1, "Speech", "Untranslated", "ピッグ",
-                new PixelRect(100, 100, 300, 100), "こんにちは")
-            .Bubble("p1-b2", "p1", 2, "Speech", "Untranslated", null,
-                new PixelRect(100, 500, 300, 100), "さようなら")
+            .Image("a.jpg", 1000, 2000)
+            .Bubble("b1", 1, "Speech", "Untranslated", "ピッグ",
+                new PixelPoint(100, 100), "こんにちは")
+            .Bubble("b2", 2, "Speech", "Untranslated", null,
+                new PixelPoint(100, 500), "さようなら")
             .BuildZip(Path.Combine(_tempDir, "mut.pcml"));
         return PcmlDocument.Open(path);
     }
@@ -42,10 +42,10 @@ public class MutationTests : IDisposable
         var bubble = doc.Model.Bubbles[0];
         BubbleMutations.SetPartCount(bubble, 3);
         Assert.Equal(3, bubble.Parts.Count);
-        // Source region 100x100 split into 3 horizontal bands (34+33+33).
-        Assert.Equal(100, bubble.Parts[0].Region.Y);
-        Assert.Equal(134, bubble.Parts[1].Region.Y);
-        Assert.Equal(167, bubble.Parts[2].Region.Y);
+        // Markers stack from the source marker by PartMarkerStep (D-18/D-50), not bands.
+        Assert.Equal(100, bubble.Parts[0].Marker.Y);
+        Assert.Equal(100 + BubbleMutations.PartMarkerStep, bubble.Parts[1].Marker.Y);
+        Assert.Equal(100 + (2 * BubbleMutations.PartMarkerStep), bubble.Parts[2].Marker.Y);
 
         BubbleMutations.SetPartText(bubble, 1, "一");
         BubbleMutations.SetPartText(bubble, 2, "二");
@@ -54,7 +54,7 @@ public class MutationTests : IDisposable
         BubbleMutations.SetPartCount(bubble, 1);
         Assert.Single(bubble.Parts);
         Assert.Equal("一\n二\n三", bubble.Parts[0].Text);
-        Assert.Equal(new PixelRect(100, 100, 300, 100), bubble.Parts[0].Region);
+        Assert.Equal(new PixelPoint(100, 100), bubble.Parts[0].Marker);
     }
 
     [Fact]
@@ -64,41 +64,41 @@ public class MutationTests : IDisposable
         var bubble = doc.Model.Bubbles[0];
         BubbleMutations.SetPartText(bubble, 1, "x");
 
-        BubbleMutations.AddBubble(doc, "p1", new PixelRect(100, 300, 300, 100), out var created);
+        BubbleMutations.AddBubble(doc, new PixelPoint(100, 300), out var created);
         Assert.StartsWith("u", created.Id);
         Assert.Equal(9, created.Id.Length); // "u" + 8 hex chars
         Assert.Equal("Speech", created.Kind.ToString());
         Assert.Equal(BubbleStatus.Untranslated, created.Status);
         Assert.Equal("", created.SourceText);
         Assert.Single(created.Parts);
-        Assert.Equal(new PixelRect(100, 300, 300, 100), created.Parts[0].Region);
+        Assert.Equal(new PixelPoint(100, 300), created.Parts[0].Marker);
 
         // Orders: original Y=100 -> 1, new Y=300 -> 2, original Y=500 -> 3.
         var docOrders = doc.Model.Bubbles.OrderBy(b => b.Order).Select(b => b.Order).ToList();
         Assert.Equal([1, 2, 3], docOrders);
         var ids = doc.Model.Bubbles.OrderBy(b => b.Order).Select(b => b.Id).ToList();
-        Assert.Equal(["p1-b1", created.Id, "p1-b2"], ids);
+        Assert.Equal(["b1", created.Id, "b2"], ids);
     }
 
     [Fact]
     public void AddBubble_At_Top_Gets_Order_1()
     {
         using var doc = OpenValid();
-        BubbleMutations.AddBubble(doc, "p1", new PixelRect(100, 0, 300, 100), out var created);
+        BubbleMutations.AddBubble(doc, new PixelPoint(100, 0), out var created);
         Assert.Equal(1, created.Order);
         Assert.Equal([1, 2, 3], doc.Model.Bubbles.OrderBy(b => b.Order).Select(b => b.Order).ToList());
-        var b1 = doc.Model.Bubbles.First(b => b.Id == "p1-b1");
+        var b1 = doc.Model.Bubbles.First(b => b.Id == "b1");
         Assert.Equal(2, b1.Order);
     }
 
     [Fact]
     public async Task AddBubble_Id_Collision_Checked()
     {
-        var builder = PcmlTestBuilder.New("t", "ja", "zh-Hant").Chapter("1")
-            .Page("p1", "a.jpg", 1000, 2000);
+        var builder = PcmlTestBuilder.New("t", "zh-CN", "ja").Chapter("1")
+            .Image("a.jpg", 1000, 2000);
         for (var i = 1; i <= 5; i++)
         {
-            builder.Bubble($"pb{i}", "p1", i, "Speech", "Untranslated", source: $"{i}");
+            builder.Bubble($"pb{i}", i, "Speech", "Untranslated", source: $"{i}");
         }
 
         var path = builder.BuildZip(Path.Combine(_tempDir, "col.pcml"));
@@ -106,7 +106,7 @@ public class MutationTests : IDisposable
         var ids = new HashSet<string>(doc.Model.Bubbles.Select(b => b.Id));
         for (var i = 0; i < 50; i++)
         {
-            BubbleMutations.AddBubble(doc, "p1", new PixelRect(0, i * 10, 10, 10), out var created);
+            BubbleMutations.AddBubble(doc, new PixelPoint(0, i * 10), out var created);
             Assert.True(ids.Add(created.Id), $"collision on {created.Id}");
         }
 
@@ -146,9 +146,9 @@ public class MutationTests : IDisposable
         var target = doc.Model.Bubbles[0];
         BubbleMutations.DeleteBubble(doc, target);
 
-        Assert.DoesNotContain(doc.Model.Bubbles, b => b.Id == "p1-b1");
+        Assert.DoesNotContain(doc.Model.Bubbles, b => b.Id == "b1");
         Assert.Empty(doc.ContentXml.Root!.Element("bubbles")!.Elements("bubble")
-            .Where(e => (string?)e.Attribute("id") == "p1-b1"));
+            .Where(e => (string?)e.Attribute("id") == "b1"));
     }
 
     [Fact]
@@ -160,12 +160,12 @@ public class MutationTests : IDisposable
         var rec = BubbleMutations.SetPartText(bubble, 1, "更新");
         Assert.Equal("SetPartText", rec.OpName);
         Assert.Contains("\"before\":\"\\u6700\\u521D\"", rec.Payload); // "最初"
-        Assert.Contains("\"id\":\"p1-b1\"", rec.Payload);
+        Assert.Contains("\"id\":\"b1\"", rec.Payload);
 
         var statusRec = BubbleMutations.SetStatus(bubble, BubbleStatus.Draft);
         Assert.Contains("\"before\":\"Untranslated\"", statusRec.Payload);
 
-        BubbleMutations.SetSourceRegion(bubble, new PixelRect(0, 0, 5, 5));
+        BubbleMutations.SetMarker(bubble, new PixelPoint(0, 0));
         var kindRec = BubbleMutations.SetKind(bubble, BubbleKind.Narration);
         Assert.Contains("\"before\":\"Speech\"", kindRec.Payload);
     }

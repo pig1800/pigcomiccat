@@ -12,6 +12,13 @@ namespace PigComic.Core.Package;
 /// </summary>
 public static class BubbleMutations
 {
+    /// <summary>
+    /// Vertical gap between the default markers of a split target's parts, in strip pixels
+    /// (SPEC §15.3 / D-18). Just far enough that two crosses never overlap; the user drags
+    /// them where they actually belong.
+    /// </summary>
+    public const int PartMarkerStep = 48;
+
     private static readonly JsonSerializerOptions Json = new()
     {
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
@@ -29,31 +36,26 @@ public static class BubbleMutations
         return bubble.Parts[index - 1];
     }
 
-    private static string RegionToString(PixelRect r) => $"{r.X},{r.Y},{r.Width},{r.Height}";
+    private static string MarkerToString(PixelPoint p) => $"{p.X},{p.Y}";
 
-    private static XElement RegionElement(PixelRect r) =>
-        new("region",
-            new XAttribute("x", r.X), new XAttribute("y", r.Y),
-            new XAttribute("width", r.Width), new XAttribute("height", r.Height));
+    private static XElement MarkerElement(PixelPoint p) =>
+        new("marker",
+            new XAttribute("x", p.X),
+            new XAttribute("y", p.Y));
 
-    /// <summary>
-    /// The source region divided into <paramref name="count"/> equal horizontal
-    /// bands top-to-bottom, part 1 topmost (SPEC §15.3 / D-18).
+    /// Default markers for a split target (D-18, amended by D-50): part 1 sits on the
+    /// source marker and each later part is offset <see cref="PartMarkerStep"/> px further
+    /// down the strip, so the crosses never land on top of one another.
     /// </summary>
-    private static IReadOnlyList<PixelRect> SplitBands(PixelRect source, int count)
+    private static IReadOnlyList<PixelPoint> StackedMarkers(PixelPoint source, int count)
     {
-        var bandHeight = source.Height / count;
-        var remainder = source.Height % count;
-        var bands = new PixelRect[count];
-        var y = source.Y;
+        var markers = new PixelPoint[count];
         for (var i = 0; i < count; i++)
         {
-            var h = bandHeight + (i < remainder ? 1 : 0);
-            bands[i] = new PixelRect(source.X, y, source.Width, h);
-            y += h;
+            markers[i] = new PixelPoint(source.X, source.Y + (i * PartMarkerStep));
         }
 
-        return bands;
+        return markers;
     }
 
     private static XElement TargetElement(Bubble bubble) =>
@@ -79,9 +81,9 @@ public static class BubbleMutations
 
     /// <summary>
     /// Set target part count 1..3 (SPEC §15.3). Reducing to 1 joins texts with "\n"
-    /// into part 1 and resets its region to the source region; reducing 3→2 drops
+    /// into part 1 and resets its marker to the source marker; reducing 3→2 drops
     /// the last part. Increasing keeps existing text in part 1 and gives new parts
-    /// empty texts with default horizontal-band regions (D-18).
+    /// empty texts with stacked default markers (D-18).
     /// </summary>
     public static MutationRecord SetPartCount(Bubble bubble, int count)
     {
@@ -98,10 +100,10 @@ public static class BubbleMutations
 
         if (count < before)
         {
-            // Merge: join all texts into part 1, reset region to source region.
+            // Merge: join all texts into part 1, reset its marker to the source marker.
             var joined = string.Join("\n", bubble.Parts.Select(p => p.Text));
             bubble.Parts[0].Text = joined;
-            bubble.Parts[0].Region = bubble.SourceRegion;
+            bubble.Parts[0].Marker = bubble.Marker;
             while (bubble.Parts.Count > count)
             {
                 var index = bubble.Parts.Count;
@@ -111,12 +113,12 @@ public static class BubbleMutations
         }
         else
         {
-            var bands = SplitBands(bubble.SourceRegion, count);
+            var markers = StackedMarkers(bubble.Marker, count);
             var targetEl = TargetElement(bubble);
             for (var i = bubble.Parts.Count; i < count; i++)
             {
                 var partEl = new XElement("part", new XAttribute("index", i + 1),
-                    RegionElement(bands[i]), new XElement("text", ""));
+                    MarkerElement(markers[i]), new XElement("text", ""));
                 targetEl.Add(partEl);
                 bubble.PartsList.Add(new TargetPart(partEl));
             }
@@ -175,19 +177,19 @@ public static class BubbleMutations
         return new MutationRecord("SetLlmComment", J(new { id = bubble.Id, before }));
     }
 
-    public static MutationRecord SetSourceRegion(Bubble bubble, PixelRect region)
+    public static MutationRecord SetMarker(Bubble bubble, PixelPoint marker)
     {
-        var before = bubble.SourceRegion;
-        bubble.SourceRegion = region;
-        return new MutationRecord("SetSourceRegion", J(new { id = bubble.Id, before = RegionToString(before) }));
+        var before = bubble.Marker;
+        bubble.Marker = marker;
+        return new MutationRecord("SetMarker", J(new { id = bubble.Id, before = MarkerToString(before) }));
     }
 
-    public static MutationRecord SetPartRegion(Bubble bubble, int partIndex, PixelRect region)
+    public static MutationRecord SetPartMarker(Bubble bubble, int partIndex, PixelPoint marker)
     {
         var part = PartOrThrow(bubble, partIndex);
-        var before = part.Region;
-        part.Region = region;
-        return new MutationRecord("SetPartRegion", J(new { id = bubble.Id, index = partIndex, before = RegionToString(before) }));
+        var before = part.Marker;
+        part.Marker = marker;
+        return new MutationRecord("SetPartMarker", J(new { id = bubble.Id, index = partIndex, before = MarkerToString(before) }));
     }
 
     public static MutationRecord SetOrder(Bubble bubble, int order)
@@ -202,11 +204,11 @@ public static class BubbleMutations
     /// <summary>
     /// Creates a new bubble (SPEC §15.2 / D-03, D-17): id "u" + 8 lowercase hex,
     /// collision-checked; kind Speech, status Untranslated, empty source/target,
-    /// one part with region = source region. Reading order: after the last bubble
-    /// on the page whose region top-Y is at or above the new one (ties after);
+    /// one part whose marker equals the source marker. Reading order is chapter-global
+    /// (D-49): after the last bubble whose marker Y is at or above the new one (ties after);
     /// subsequent orders renumbered. Refreshes the document model.
     /// </summary>
-    public static MutationRecord AddBubble(PcmlDocument doc, string pageId, PixelRect region, out Bubble created)
+    public static MutationRecord AddBubble(PcmlDocument doc, PixelPoint marker, out Bubble created)
     {
         var root = doc.ContentXml.Root ?? throw new InvalidOperationException("No document root.");
         var bubblesEl = root.Element("bubbles") ?? throw new InvalidOperationException("No <bubbles> element.");
@@ -214,34 +216,30 @@ public static class BubbleMutations
 
         var bubbleEl = new XElement("bubble",
             new XAttribute("id", id),
-            new XAttribute("page", pageId),
             new XAttribute("order", 1),
             new XAttribute("kind", "Speech"),
             new XAttribute("status", "Untranslated"),
-            RegionElement(region));
+            MarkerElement(marker));
         bubbleEl.Add(new XElement("source", ""));
         var target = new XElement("target");
         target.Add(new XElement("part", new XAttribute("index", "1"),
-            RegionElement(region), new XElement("text", "")));
+            MarkerElement(marker), new XElement("text", "")));
         bubbleEl.Add(target);
         bubblesEl.Add(bubbleEl);
 
         // Order insertion (Y-only, D-36): after the last bubble whose top-Y <= the
         // new top-Y (ties after per D-17); subsequent orders renumbered.
-        var pageBubbles = doc.Model.Bubbles
-            .Where(b => b.PageId == pageId)
-            .OrderBy(b => b.Order)
-            .ToList();
-        var newOrder = pageBubbles.Count(b => b.SourceRegion.Y <= region.Y) + 1;
+        var existing = doc.Model.Bubbles.OrderBy(b => b.Order).ToList();
+        var newOrder = existing.Count(b => b.Marker.Y <= marker.Y) + 1;
         bubbleEl.SetAttributeValue("order", newOrder);
-        foreach (var b in pageBubbles.Where(b => b.Order >= newOrder).OrderByDescending(b => b.Order))
+        foreach (var b in existing.Where(b => b.Order >= newOrder).OrderByDescending(b => b.Order))
         {
             b.Order = b.Order + 1;
         }
 
         doc.RefreshModel();
         created = doc.Model.Bubbles.First(b => b.Id == id);
-        return new MutationRecord("AddBubble", J(new { id, page = pageId, order = newOrder }));
+        return new MutationRecord("AddBubble", J(new { id, order = newOrder }));
     }
 
     /// <summary>Removes the bubble element and refreshes the model; record carries the full restore info.</summary>
@@ -250,14 +248,13 @@ public static class BubbleMutations
         var snapshot = new
         {
             id = bubble.Id,
-            page = bubble.PageId,
             order = bubble.Order,
             kind = bubble.RawKind,
             status = bubble.RawStatus,
             character = bubble.Character,
-            region = RegionToString(bubble.SourceRegion),
+            marker = MarkerToString(bubble.Marker),
             source = bubble.SourceText,
-            parts = bubble.Parts.Select(p => new { p.Index, region = RegionToString(p.Region), p.Text }).ToArray(),
+            parts = bubble.Parts.Select(p => new { p.Index, marker = MarkerToString(p.Marker), p.Text }).ToArray(),
             notes = bubble.Notes,
             llmComment = bubble.LlmComment,
         };

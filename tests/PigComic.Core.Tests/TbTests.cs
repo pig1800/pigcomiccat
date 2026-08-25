@@ -45,7 +45,7 @@ public class TbTests : IDisposable
     [Fact]
     public async Task Forbidden_Row_With_Empty_Source_Allowed()
     {
-        using var store = new TbStore(_db, "ja", "zh-Hant");
+        using var store = new TbStore(_db, "zh-CN", "ja");
         var term = await store.UpsertAsync("", "ゲス", forbidden: true, "", CancellationToken.None);
         Assert.True(term.Forbidden);
     }
@@ -53,7 +53,7 @@ public class TbTests : IDisposable
     [Fact]
     public async Task NonForbidden_Empty_Target_Rejected()
     {
-        using var store = new TbStore(_db, "ja", "zh-Hant");
+        using var store = new TbStore(_db, "zh-CN", "ja");
         await Assert.ThrowsAsync<InvalidOperationException>(() =>
             store.UpsertAsync("悟空", "", forbidden: false, "", CancellationToken.None));
     }
@@ -61,7 +61,7 @@ public class TbTests : IDisposable
     [Fact]
     public async Task Synonyms_Share_Source_Term()
     {
-        using var store = new TbStore(_db, "ja", "zh-Hant");
+        using var store = new TbStore(_db, "zh-CN", "ja");
         await store.UpsertAsync("悟空", "孫悟空", false, "", CancellationToken.None);
         await store.UpsertAsync("悟空", "悟空", false, "", CancellationToken.None);
         Assert.Equal(2, store.All().Count);
@@ -70,7 +70,7 @@ public class TbTests : IDisposable
     [Fact]
     public void Mismatched_Language_Pair_Throws()
     {
-        using (var store = new TbStore(_db, "ja", "zh-Hant")) { }
+        using (var store = new TbStore(_db, "zh-CN", "ja")) { }
         Assert.Throws<InvalidOperationException>(() => new TbStore(_db, "ja", "ko"));
     }
 }

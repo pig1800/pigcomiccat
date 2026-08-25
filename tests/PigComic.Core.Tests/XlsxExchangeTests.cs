@@ -34,7 +34,7 @@ public class XlsxExchangeTests : IDisposable
     [Fact]
     public async Task Tm_RoundTrip()
     {
-        using var tm = new TmStore(Temp(".db"), "ja", "zh-Hant");
+        using var tm = new TmStore(Temp(".db"), "zh-CN", "ja");
         await tm.UpsertAsync("こんにちは", "你好", "ピッグ", "Speech", "001", null, null, CancellationToken.None);
         await tm.UpsertAsync("さようなら", "再见", null, null, "001", null, null, CancellationToken.None);
 
@@ -42,7 +42,7 @@ public class XlsxExchangeTests : IDisposable
         var exchange = new TmXlsxExchange();
         await exchange.ExportAsync(xlsx, tm, CancellationToken.None);
 
-        using var fresh = new TmStore(Temp("-fresh.db"), "ja", "zh-Hant");
+        using var fresh = new TmStore(Temp("-fresh.db"), "zh-CN", "ja");
         var report = await exchange.ImportAsync(xlsx, fresh, CancellationToken.None);
         Assert.False(report.IsError, report.Error);
         Assert.Equal(2, fresh.CountEntries());
@@ -67,7 +67,7 @@ public class XlsxExchangeTests : IDisposable
             wb.SaveAs(xlsx);
         }
 
-        using var fresh = new TmStore(Temp("-cols.db"), "ja", "zh-Hant");
+        using var fresh = new TmStore(Temp("-cols.db"), "zh-CN", "ja");
         var report = await new TmXlsxExchange().ImportAsync(xlsx, fresh, CancellationToken.None);
         Assert.False(report.IsError, report.Error);
         var e = Assert.Single(fresh.AllEntries());
@@ -86,7 +86,7 @@ public class XlsxExchangeTests : IDisposable
             wb.SaveAs(xlsx);
         }
 
-        using var fresh = new TmStore(Temp("-bad.db"), "ja", "zh-Hant");
+        using var fresh = new TmStore(Temp("-bad.db"), "zh-CN", "ja");
         var report = await new TmXlsxExchange().ImportAsync(xlsx, fresh, CancellationToken.None);
         Assert.True(report.IsError);
         Assert.Contains("译文", report.Error);
@@ -97,7 +97,7 @@ public class XlsxExchangeTests : IDisposable
     [Fact]
     public async Task Tb_RoundTrip_With_Forbidden()
     {
-        using var tb = new TbStore(Temp("-tb.db"), "ja", "zh-Hant");
+        using var tb = new TbStore(Temp("-tb.db"), "zh-CN", "ja");
         await tb.UpsertAsync("魔王", "大魔王", false, "注", CancellationToken.None);
         await tb.UpsertAsync("クソ", "糞", forbidden: true, "", CancellationToken.None);
 
@@ -105,7 +105,7 @@ public class XlsxExchangeTests : IDisposable
         var exchange = new TbXlsxExchange();
         await exchange.ExportAsync(xlsx, tb, CancellationToken.None);
 
-        using var fresh = new TbStore(Temp("-tb-fresh.db"), "ja", "zh-Hant");
+        using var fresh = new TbStore(Temp("-tb-fresh.db"), "zh-CN", "ja");
         var report = await exchange.ImportAsync(xlsx, fresh, CancellationToken.None);
         Assert.False(report.IsError, report.Error);
         Assert.Equal(2, fresh.All().Count);

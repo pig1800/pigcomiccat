@@ -42,7 +42,7 @@ public sealed class PcmlDocument : IDisposable
 
     /// <summary>
     /// Rebuilds <see cref="Model"/> from the current DOM after structural mutations
-    /// (bubble create/delete, part count changes). Page and character lists are
+    /// (bubble create/delete, part count changes). Image and character lists are
     /// rebuilt fresh; callers re-read <see cref="Model"/> after mutations.
     /// </summary>
     internal void RefreshModel()
@@ -58,7 +58,7 @@ public sealed class PcmlDocument : IDisposable
 
     /// <summary>
     /// Opens the package: reads <c>content.xml</c> into an XDocument and builds
-    /// the domain model (bubbles sorted by page order, then Order).
+    /// the domain model (bubbles sorted by Order across the whole chapter).
     /// </summary>
     public static PcmlDocument Open(string path)
     {
@@ -137,20 +137,16 @@ public sealed class PcmlDocument : IDisposable
             names.AddRange(chars.Elements("character").Select(c => (string?)c.Attribute("name") ?? ""));
         }
 
-        var pages = new List<Page>();
-        if (root.Element("pages") is { } pagesEl)
+        // Images in document order ARE strip order; nothing references them by id (D-49).
+        var images = new List<ChapterImage>();
+        if (root.Element("images") is { } imagesEl)
         {
-            foreach (var pageEl in pagesEl.Elements("page"))
+            foreach (var imageEl in imagesEl.Elements("image"))
             {
-                pages.Add(new Page(pageEl));
+                images.Add(new ChapterImage(imageEl));
             }
         }
 
-        var pageOrder = new Dictionary<string, int>();
-        for (var i = 0; i < pages.Count; i++)
-        {
-            pageOrder.TryAdd(pages[i].Id, i);
-        }
         var bubbles = new List<Bubble>();
         if (root.Element("bubbles") is { } bubblesEl)
         {
@@ -160,12 +156,10 @@ public sealed class PcmlDocument : IDisposable
             }
         }
 
-        var sorted = bubbles
-            .OrderBy(b => pageOrder.TryGetValue(b.PageId, out var idx) ? idx : int.MaxValue)
-            .ThenBy(b => b.Order)
-            .ToList();
+        // One reading order across the whole chapter (D-49).
+        var sorted = bubbles.OrderBy(b => b.Order).ToList();
 
-        return new Chapter(title, chapter, srcLang, tgtLang, names, pages, sorted);
+        return new Chapter(title, chapter, srcLang, tgtLang, names, images, sorted);
     }
 
     public void Dispose()
@@ -237,7 +231,7 @@ public sealed class PcmlDocument : IDisposable
     }
 
     /// <summary>
-    /// Reorders <c>&lt;bubble&gt;</c> elements in the DOM to (page order, @order)
+    /// Reorders <c>&lt;bubble&gt;</c> elements in the DOM to @order
     /// and applies the §5.3 xml:space="preserve" rule to user-text elements.
     /// </summary>
     private void PrepareContentXml()
@@ -251,24 +245,9 @@ public sealed class PcmlDocument : IDisposable
         var bubblesEl = root.Element("bubbles");
         if (bubblesEl is not null)
         {
-            var pageIndex = new Dictionary<string, int>();
-            var pagesEl = root.Element("pages");
-            var i = 0;
-            foreach (var page in pagesEl?.Elements("page") ?? [])
-            {
-                var id = (string?)page.Attribute("id");
-                if (id is not null)
-                {
-                    pageIndex.TryAdd(id, i);
-                }
-
-                i++;
-            }
-
             var els = bubblesEl.Elements("bubble").ToList();
             var sorted = els
-                .OrderBy(el => pageIndex.TryGetValue((string?)el.Attribute("page") ?? "", out var idx) ? idx : int.MaxValue)
-                .ThenBy(el => int.TryParse((string?)el.Attribute("order"), out var o) ? o : int.MaxValue)
+                .OrderBy(el => int.TryParse((string?)el.Attribute("order"), out var o) ? o : int.MaxValue)
                 .ToList();
             if (!els.SequenceEqual(sorted))
             {

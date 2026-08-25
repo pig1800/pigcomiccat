@@ -30,7 +30,7 @@ public class TbxTests : IDisposable
     [Fact]
     public async Task RoundTrip_Three_Terms_Including_Forbidden()
     {
-        using var tb = new TbStore(Temp(".db"), "ja", "zh-Hant");
+        using var tb = new TbStore(Temp(".db"), "zh-CN", "ja");
         await tb.UpsertAsync("魔王", "大魔王", false, "注1", CancellationToken.None);
         await tb.UpsertAsync("ゲス", "混蛋", false, "", CancellationToken.None);
         await tb.UpsertAsync("クソ", "糞", forbidden: true, "", CancellationToken.None);
@@ -39,7 +39,7 @@ public class TbxTests : IDisposable
         var exchange = new TbxExchange();
         await exchange.ExportAsync(tbxPath, tb, CancellationToken.None);
 
-        using var fresh = new TbStore(Temp("-fresh.db"), "ja", "zh-Hant");
+        using var fresh = new TbStore(Temp("-fresh.db"), "zh-CN", "ja");
         var report = await exchange.ImportAsync(tbxPath, fresh, CancellationToken.None);
         Assert.False(report.IsError, report.Error);
         Assert.Equal(3, fresh.All().Count);
@@ -67,7 +67,7 @@ public class TbxTests : IDisposable
             </martif>
             """);
 
-        using var fresh = new TbStore(Temp("-min.db"), "ja", "zh-Hant");
+        using var fresh = new TbStore(Temp("-min.db"), "zh-CN", "ja");
         var report = await new TbxExchange().ImportAsync(path, fresh, CancellationToken.None);
         Assert.False(report.IsError, report.Error);
         Assert.Equal(1, fresh.All().Count);

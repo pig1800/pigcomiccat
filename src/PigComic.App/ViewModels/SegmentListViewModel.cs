@@ -6,7 +6,7 @@ using PigComic.Core.Domain;
 namespace PigComic.App.ViewModels;
 
 /// <summary>
-/// M5.2 segment list: virtualized list of page-group headers + bubble rows in
+/// M5.2 segment list: virtualized list of bubble rows in
 /// global reading order (SPEC §14.3). Selection movement (Ctrl+Up/Down) and the
 /// status-bar hook live here; image-pane sync is wired by the editor view.
 /// </summary>
@@ -40,30 +40,19 @@ public partial class SegmentListViewModel : ObservableObject
         }
     }
 
-    /// <summary>Builds the flat item list: one header per page, then its bubbles in order.</summary>
+    /// <summary>
+    /// Builds the row list in chapter-global reading order. There are no page group headers:
+    /// a chapter is one continuous strip (D-49).
+    /// </summary>
     public void Rebuild()
     {
         Items.Clear();
         var chapter = _session.Document.Model;
-        var byPage = new Dictionary<string, List<Bubble>>();
-        foreach (var b in chapter.Bubbles)
-        {
-            byPage.TryAdd(b.PageId, []);
-            byPage[b.PageId].Add(b);
-        }
-
         var facade = new ChapterSessionFacade(_session);
-        for (var i = 0; i < chapter.Pages.Count; i++)
+
+        foreach (var bubble in chapter.Bubbles)
         {
-            var page = chapter.Pages[i];
-            Items.Add(new SegmentPageHeaderViewModel(page.Id, i));
-            if (byPage.TryGetValue(page.Id, out var bubbles))
-            {
-                foreach (var b in bubbles)
-                {
-                    Items.Add(BubbleRowViewModel.Create(b, facade));
-                }
-            }
+            Items.Add(BubbleRowViewModel.Create(bubble, facade));
         }
     }
 

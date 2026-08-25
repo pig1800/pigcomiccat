@@ -31,11 +31,11 @@ public class MatchListTests : IDisposable
     {
         // Two exact TM entries: same normalized source, different speakers — both
         // exact (100) for a query without character context → two TM rows.
-        using var tmStore = new TmStore(_tmDb, "ja", "zh-Hant");
+        using var tmStore = new TmStore(_tmDb, "zh-CN", "ja");
         await tmStore.UpsertAsync("おはようございます。魔王はピッグだ。", "早安版甲", "甲", null, null, null, null, CancellationToken.None);
         await tmStore.UpsertAsync("おはようございます。魔王はピッグだ。", "早安版乙", "乙", null, null, null, null, CancellationToken.None);
 
-        using var tbStore = new TbStore(_tbDb, "ja", "zh-Hant");
+        using var tbStore = new TbStore(_tbDb, "zh-CN", "ja");
         await tbStore.UpsertAsync("魔王", "魔王大人", false, "", CancellationToken.None);
         await tbStore.UpsertAsync("ピッグ", "小豬", false, "", CancellationToken.None);
 
@@ -65,8 +65,8 @@ public class MatchListTests : IDisposable
     [Fact]
     public async Task Forbidden_Tb_Row_Not_Insertable()
     {
-        using var tmStore = new TmStore(_tmDb, "ja", "zh-Hant");
-        using var tbStore = new TbStore(_tbDb, "ja", "zh-Hant");
+        using var tmStore = new TmStore(_tmDb, "zh-CN", "ja");
+        using var tbStore = new TbStore(_tbDb, "zh-CN", "ja");
         await tbStore.UpsertAsync("ゲス", "下品", forbidden: true, "", CancellationToken.None);
 
         var service = new MatchListService(new TmQueryService(tmStore), tbStore);
@@ -79,8 +79,8 @@ public class MatchListTests : IDisposable
     [Fact]
     public async Task Cap_At_Nine_Rows()
     {
-        using var tmStore = new TmStore(_tmDb, "ja", "zh-Hant");
-        using var tbStore = new TbStore(_tbDb, "ja", "zh-Hant");
+        using var tmStore = new TmStore(_tmDb, "zh-CN", "ja");
+        using var tbStore = new TbStore(_tbDb, "zh-CN", "ja");
         for (var i = 0; i < 12; i++)
         {
             await tbStore.UpsertAsync($"語{i}", $"訳{i}", false, "", CancellationToken.None);

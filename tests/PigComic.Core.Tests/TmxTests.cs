@@ -30,7 +30,7 @@ public class TmxTests : IDisposable
     [Fact]
     public async Task Export_Then_Import_RoundTrips_Identically()
     {
-        using var tm = new TmStore(Temp(".db"), "ja", "zh-Hant");
+        using var tm = new TmStore(Temp(".db"), "zh-CN", "ja");
         await tm.UpsertAsync("おはようございます", "早安", "ピッグ", "Speech", "012", null, null, CancellationToken.None);
         await tm.UpsertAsync("魔王が来た", "魔王来了", null, null, "012", null, null, CancellationToken.None);
         await tm.UpsertAsync("ドドド", "咚", null, null, "012", null, null, CancellationToken.None);
@@ -39,7 +39,7 @@ public class TmxTests : IDisposable
         var exchange = new TmxExchange();
         await exchange.ExportAsync(tmxPath, tm, CancellationToken.None);
 
-        using var fresh = new TmStore(Temp("-fresh.db"), "ja", "zh-Hant");
+        using var fresh = new TmStore(Temp("-fresh.db"), "zh-CN", "ja");
         var report = await exchange.ImportAsync(tmxPath, fresh, CancellationToken.None);
 
         Assert.False(report.IsError, report.Error);
@@ -65,25 +65,25 @@ public class TmxTests : IDisposable
         var tmx =
             """
             <tmx version="1.4" xmlns="http://www.lisa.org/tmx14">
-            <header srclang="ja" datatype="unknown"/>
+            <header srclang="zh-CN" datatype="unknown"/>
             <body>
             <tu>
-              <tuv xml:lang="ja"><seg>こん<bpt>&lt;b&gt;</bpt>にちは<ept>&lt;/b&gt;</ept></seg></tuv>
-              <tuv xml:lang="zh-Hant"><seg>你<it pos="begin">好</it></seg></tuv>
+              <tuv xml:lang="zh-CN"><seg>你<bpt>&lt;b&gt;</bpt>好<ept>&lt;/b&gt;</ept></seg></tuv>
+              <tuv xml:lang="ja"><seg>こん<it pos="begin">にちは</it></seg></tuv>
             </tu>
             </body>
             </tmx>
             """;
         File.WriteAllText(path, tmx);
 
-        using var fresh = new TmStore(Temp("-tag.db"), "ja", "zh-Hant");
+        using var fresh = new TmStore(Temp("-tag.db"), "zh-CN", "ja");
         var report = await new TmxExchange().ImportAsync(path, fresh, CancellationToken.None);
 
         Assert.False(report.IsError, report.Error);
         Assert.True(report.TagStripped >= 1, $"expected ≥1 stripped, got {report.TagStripped}");
         // seg Value never contains markup — tags effectively stripped.
         var entry = Assert.Single(fresh.AllEntries());
-        Assert.Contains("こん", entry.SourceRaw);
+        Assert.Contains("你好", entry.SourceRaw);
         Assert.DoesNotContain("<bpt>", entry.SourceRaw);
         Assert.DoesNotContain("<", entry.SourceRaw);
     }
@@ -101,7 +101,7 @@ public class TmxTests : IDisposable
             </tmx>
             """);
 
-        using var fresh = new TmStore(Temp("-wrong.db"), "ja", "zh-Hant");
+        using var fresh = new TmStore(Temp("-wrong.db"), "zh-CN", "ja");
         var report = await new TmxExchange().ImportAsync(path, fresh, CancellationToken.None);
         Assert.True(report.IsError);
         Assert.Contains("ko", report.Error);

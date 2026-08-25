@@ -28,11 +28,11 @@ public class PcmlValidationTests : IDisposable
     private static readonly string ValidXml =
         """
         <?xml version="1.0" encoding="utf-8"?>
-        <pcml version="1"><meta><title>t</title><chapter>1</chapter><sourceLanguage>ja</sourceLanguage>
-        <targetLanguage>zh-Hant</targetLanguage></meta><characters><character name="甲"/></characters><pages>
-        <page id="p1" file="a.jpg" width="100" height="100"/></pages><bubbles>
-        <bubble id="b1" page="p1" order="1" kind="Speech" status="Untranslated"><region x="0" y="0" width="50" height="50"/>
-        <source>hi</source><target><part index="1"><region x="0" y="0" width="50" height="50"/><text></text></part></target></bubble>
+        <pcml version="2"><meta><title>t</title><chapter>1</chapter><sourceLanguage>zh-CN</sourceLanguage>
+        <targetLanguage>ja</targetLanguage></meta><characters><character name="甲"/></characters><images>
+        <image file="a.jpg" width="100" height="100"/></images><bubbles>
+        <bubble id="b1" order="1" kind="Speech" status="Untranslated"><marker x="0" y="0"/>
+        <source>hi</source><target><part index="1"><marker x="0" y="0"/><text></text></part></target></bubble>
         </bubbles></pcml>
         """;
 
@@ -50,13 +50,14 @@ public class PcmlValidationTests : IDisposable
     [Theory]
     [InlineData("E01-missing-meta")] // <meta> removed
     [InlineData("E01-no-version")]   // @version removed
-    [InlineData("E01-no-page-id")]
+    [InlineData("E01-no-bubble-id")]
     [InlineData("E01-no-part-text")]
-    [InlineData("E02-version2")]
+    [InlineData("E02-version3")]
+    [InlineData("E02-version1")]
     [InlineData("E02-version-abc")]
-    [InlineData("E03-page-id")]
+    
     [InlineData("E03-bubble-id")]
-    [InlineData("E04-unknown-page")]
+    [InlineData("E04-no-images")]
     [InlineData("E05-slash-file")]
     [InlineData("E05-missing-media")]
     [InlineData("E06-non-contiguous")]
@@ -66,18 +67,19 @@ public class PcmlValidationTests : IDisposable
     {
         var xml = which switch
         {
-            "E01-missing-meta" => ValidXml.Replace("<meta><title>t</title><chapter>1</chapter><sourceLanguage>ja</sourceLanguage>\n<targetLanguage>zh-Hant</targetLanguage></meta>", ""),
-            "E01-no-version" => Replace("version=\"1\"", "x=\"1\""),
-            "E01-no-page-id" => Replace("id=\"b1\" ", ""),
+            // Rename rather than delete: newline-agnostic, and leaves the XML well-formed.
+            "E01-missing-meta" => Replace("<meta>", "<metax>").Replace("</meta>", "</metax>"),
+            "E01-no-version" => Replace("<pcml version=\"2\"", "<pcml x=\"2\""),
+            "E01-no-bubble-id" => Replace("id=\"b1\" ", ""),
             "E01-no-part-text" => Replace("<text></text>", ""),
-            "E02-version2" => Replace("version=\"1\"", "version=\"2\""),
-            "E02-version-abc" => Replace("version=\"1\"", "version=\"abc\""),
-            "E03-page-id" => Replace("</pages>", "<page id=\"p1\" file=\"b.jpg\" width=\"10\" height=\"10\"/></pages>"),
-            "E03-bubble-id" => Replace("<bubble id=\"b1\"", "<bubble id=\"b1\" page=\"p1\" order=\"1\" kind=\"Speech\" status=\"Untranslated\"><region x=\"0\" y=\"60\" width=\"50\" height=\"50\"/><source>x</source><target><part index=\"1\"><region x=\"0\" y=\"60\" width=\"50\" height=\"50\"/><text></text></part></target></bubble><bubble id=\"b1\""),
-            "E04-unknown-page" => Replace("page=\"p1\" order=\"1\"", "page=\"nope\" order=\"1\""),
+            "E02-version3" => Replace("<pcml version=\"2\"", "<pcml version=\"3\""),
+            "E02-version1" => Replace("<pcml version=\"2\"", "<pcml version=\"1\""),
+            "E02-version-abc" => Replace("<pcml version=\"2\"", "<pcml version=\"abc\""),
+            "E03-bubble-id" => Replace("<bubble id=\"b1\"", "<bubble id=\"b1\" order=\"1\" kind=\"Speech\" status=\"Untranslated\"><marker x=\"0\" y=\"60\"/><source>x</source><target><part index=\"1\"><marker x=\"0\" y=\"60\"/><text></text></part></target></bubble><bubble id=\"b1\""),
+            "E04-no-images" => Replace("<image file=\"a.jpg\" width=\"100\" height=\"100\"/>", ""),
             "E05-slash-file" => Replace("file=\"a.jpg\"", "file=\"img/x.jpg\""),
             "E05-missing-media" => Replace("file=\"a.jpg\"", "file=\"zz.jpg\""),
-            "E06-non-contiguous" => Replace("<target><part index=\"1\"><region x=\"0\" y=\"0\" width=\"50\" height=\"50\"/><text></text></part></target>", "<target><part index=\"1\"><region x=\"0\" y=\"0\" width=\"50\" height=\"50\"/><text></text></part><part index=\"2\"><region x=\"0\" y=\"50\" width=\"50\" height=\"50\"/><text></text></part><part index=\"2\"><region x=\"0\" y=\"100\" width=\"50\" height=\"50\"/><text></text></part></target>"),
+            "E06-non-contiguous" => Replace("<target><part index=\"1\"><marker x=\"0\" y=\"0\"/><text></text></part></target>", "<target><part index=\"1\"><marker x=\"0\" y=\"0\"/><text></text></part><part index=\"2\"><marker x=\"0\" y=\"50\"/><text></text></part><part index=\"2\"><marker x=\"0\" y=\"100\"/><text></text></part></target>"),
             "E07-bad-kind" => Replace("kind=\"Speech\"", "kind=\"Banana\""),
             "E07-bad-status" => Replace("status=\"Untranslated\"", "status=\"Banana\""),
             _ => ValidXml,
@@ -98,7 +100,7 @@ public class PcmlValidationTests : IDisposable
     [Fact]
     public void W01_Duplicate_Orders_Renumbered_In_Memory()
     {
-        var xml = Replace("<bubble id=\"b1\"", "<bubble id=\"b2\" page=\"p1\" order=\"1\" kind=\"Speech\" status=\"Untranslated\"><region x=\"0\" y=\"60\" width=\"50\" height=\"50\"/><source>x</source><target><part index=\"1\"><region x=\"0\" y=\"60\" width=\"50\" height=\"50\"/><text></text></part></target></bubble><bubble id=\"b1\"");
+        var xml = Replace("<bubble id=\"b1\"", "<bubble id=\"b2\" order=\"1\" kind=\"Speech\" status=\"Untranslated\"><marker x=\"0\" y=\"60\"/><source>x</source><target><part index=\"1\"><marker x=\"0\" y=\"60\"/><text></text></part></target></bubble><bubble id=\"b1\"");
         using var doc = Open(xml);
 
         Assert.False(doc.IsReadOnly);
@@ -111,8 +113,8 @@ public class PcmlValidationTests : IDisposable
     public void W02_Character_AutoAdded_To_Chapter_List()
     {
         var xml = ValidXml.Replace(
-            "<bubble id=\"b1\" page=\"p1\" order=\"1\" kind=\"Speech\" status=\"Untranslated\">",
-            "<bubble id=\"b1\" page=\"p1\" order=\"1\" character=\"魔王\" kind=\"Speech\" status=\"Untranslated\">");
+            "<bubble id=\"b1\" order=\"1\" kind=\"Speech\" status=\"Untranslated\">",
+            "<bubble id=\"b1\" order=\"1\" character=\"魔王\" kind=\"Speech\" status=\"Untranslated\">");
 
         using var doc = Open(xml);
 
@@ -124,11 +126,12 @@ public class PcmlValidationTests : IDisposable
     }
 
     [Fact]
-    public void W03_Region_Fully_Outside_Page_Bounds()
+    public void W03_Marker_Outside_The_Strip()
     {
+        // The strip is 100×100; this marker is well past its bottom-right (D-49).
         var xml = ValidXml.Replace(
-            "x=\"0\" y=\"0\" width=\"50\" height=\"50\"",
-            "x=\"500\" y=\"500\" width=\"50\" height=\"50\"");
+            "<marker x=\"0\" y=\"0\"/>",
+            "<marker x=\"500\" y=\"500\"/>");
 
         using var doc = Open(xml);
 

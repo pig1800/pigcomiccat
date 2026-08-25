@@ -13,22 +13,20 @@ public sealed class Bubble
     private string _rawOrder = "1";
     private string _rawKind;
     private string _rawStatus;
-    private string _rawRegion = "";
+    private string _rawMarker = "";
     private string _rawSource = "";
     private string _rawNotes = "";
     private string _rawLlmComment = "";
     private string? _rawCharacter;
-    private string _rawPageId;
 
     /// <summary>Element-less construction used by tests; parts validated to 1..3.</summary>
     public Bubble(
         string id,
-        string pageId,
         int order,
         BubbleKind kind,
         BubbleStatus status = BubbleStatus.Untranslated,
         string? character = null,
-        PixelRect? sourceRegion = null,
+        PixelPoint? marker = null,
         string sourceText = "",
         IReadOnlyList<TargetPart>? parts = null,
         string notes = "",
@@ -40,15 +38,14 @@ public sealed class Bubble
         }
 
         Id = id;
-        _rawPageId = pageId;
         Order = order;
         _rawKind = kind.ToString();
         _rawStatus = status.ToString();
         Character = character;
-        SourceRegion = sourceRegion ?? new PixelRect(0, 0, 1, 1);
+        Marker = marker ?? PixelPoint.Origin;
         SourceText = sourceText;
         _parts.AddRange(parts is null
-            ? [new TargetPart(1, SourceRegion, "")]
+            ? [new TargetPart(1, Marker, "")]
             : parts.ToList());
         Notes = notes;
         LlmComment = llmComment;
@@ -59,14 +56,13 @@ public sealed class Bubble
     {
         _backing = bubble;
         Id = (string?)bubble.Attribute("id") ?? "";
-        _rawPageId = (string?)bubble.Attribute("page") ?? "";
         _rawOrder = (string?)bubble.Attribute("order") ?? "1";
         _rawKind = (string?)bubble.Attribute("kind") ?? "";
         _rawStatus = (string?)bubble.Attribute("status") ?? "";
         _rawCharacter = (string?)bubble.Attribute("character");
 
-        var regionEl = bubble.Element("region");
-        _rawRegion = regionEl is null ? "" : TargetPart.RegionFromAttrs(regionEl);
+        var markerEl = bubble.Element("marker");
+        _rawMarker = markerEl is null ? "" : TargetPart.MarkerFromAttrs(markerEl);
         _rawSource = (string?)bubble.Element("source") ?? "";
         _rawNotes = (string?)bubble.Element("notes") ?? "";
         _rawLlmComment = (string?)bubble.Element("llmComment") ?? "";
@@ -82,7 +78,7 @@ public sealed class Bubble
 
         if (_parts.Count == 0)
         {
-            _parts.Add(new TargetPart(1, SourceRegion, ""));
+            _parts.Add(new TargetPart(1, Marker, ""));
         }
 
         if (_parts.Count > 3)
@@ -92,16 +88,6 @@ public sealed class Bubble
     }
 
     public string Id { get; }
-
-    public string PageId
-    {
-        get => _rawPageId;
-        set
-        {
-            _rawPageId = value;
-            _backing?.SetAttributeValue("page", value);
-        }
-    }
 
     public int Order
     {
@@ -154,17 +140,18 @@ public sealed class Bubble
 
     internal string RawStatus => _rawStatus;
 
-    public PixelRect SourceRegion
+    /// <summary>Where the source text starts, in strip coordinates (D-50).</summary>
+    public PixelPoint Marker
     {
-        get => ParseRegion(_rawRegion);
+        get => ParseMarker(_rawMarker);
         set
         {
-            _rawRegion = TargetPart.RegionString(value);
-            _backing?.RegionElement().SetAttrs(value);
+            _rawMarker = TargetPart.MarkerString(value);
+            _backing?.MarkerElement().SetAttrs(value);
         }
     }
 
-    internal string RawSourceRegion => _rawRegion;
+    internal string RawMarker => _rawMarker;
 
     public string SourceText
     {
@@ -237,18 +224,16 @@ public sealed class Bubble
     /// <summary>Removes the backing <c>&lt;bubble&gt;</c> element from the document.</summary>
     internal void RemoveFromDocument() => _backing?.Remove();
 
-    public static PixelRect ParseRegion(string raw)
+    public static PixelPoint ParseMarker(string raw)
     {
         var parts = raw.Split(',');
-        if (parts.Length == 4 &&
+        if (parts.Length == 2 &&
             int.TryParse(parts[0], out var x) &&
-            int.TryParse(parts[1], out var y) &&
-            int.TryParse(parts[2], out var w) &&
-            int.TryParse(parts[3], out var h))
+            int.TryParse(parts[1], out var y))
         {
-            return new PixelRect(x, y, w, h);
+            return new PixelPoint(x, y);
         }
 
-        return new PixelRect(0, 0, 1, 1);
+        return PixelPoint.Origin;
     }
 }

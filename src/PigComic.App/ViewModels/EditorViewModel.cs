@@ -56,7 +56,7 @@ public partial class EditorViewModel : ObservableObject
         ChapterLabel = string.IsNullOrEmpty(model.ChapterNumber)
             ? model.Title
             : $"ch.{model.ChapterNumber} — {model.Title}";
-        CountsLabel = $"{model.Bubbles.Count} bubbles · {model.Pages.Count} pages";
+        CountsLabel = $"{model.Bubbles.Count} bubbles · {model.Images.Count} images";
         SelectionLabel = "—";
         IsReadOnly = session.Document.IsReadOnly;
 
@@ -68,29 +68,19 @@ public partial class EditorViewModel : ObservableObject
         UpdateSaveState();
     }
 
-    /// <summary>Refreshes the page label (called by the view on page switches).</summary>
-    public void SetCurrentPage(int pageIndex)
+    /// <summary>Refreshes the strip-position label (called by the view as it scrolls).</summary>
+    public void SetStripPosition(long stripY)
     {
-        if (_session is null)
-        {
-            return;
-        }
-
-        var count = _session.Document.Model.Pages.Count;
-        PageLabel = count == 0 ? "Page —" : $"Page {pageIndex + 1} / {count}";
+        var height = _session.Document.Model.StripHeight;
+        PageLabel = height <= 0
+            ? "—"
+            : $"y {stripY:N0} / {height:N0}";
+        OnPropertyChanged(nameof(PageLabel));
     }
 
     private void UpdatePageLabel()
     {
-        if (_session is null)
-        {
-            PageLabel = "Page —";
-            return;
-        }
-
-        var count = _session.Document.Model.Pages.Count;
-        PageLabel = count == 0 ? "Page —" : "Page 1 / " + count;
-        OnPropertyChanged(nameof(PageLabel));
+        SetStripPosition(0);
     }
 
     private void OnBubbleSelectionChanged(BubbleRowViewModel? row) => RefreshSelectionLabel(row);

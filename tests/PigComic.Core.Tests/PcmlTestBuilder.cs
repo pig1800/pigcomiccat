@@ -21,14 +21,14 @@ public sealed class PcmlTestBuilder
     {
         var doc = new XDocument(
             new XDeclaration("1.0", "utf-8", null),
-            new XElement("pcml", new XAttribute("version", "1"),
+            new XElement("pcml", new XAttribute("version", "2"),
                 new XElement("meta",
                     new XElement("title", title),
                     new XElement("chapter", "001"),
                     new XElement("sourceLanguage", srcLang),
                     new XElement("targetLanguage", tgtLang)),
                 new XElement("characters"),
-                new XElement("pages"),
+                new XElement("images"),
                 new XElement("bubbles")));
         return new PcmlTestBuilder(doc);
     }
@@ -53,10 +53,11 @@ public sealed class PcmlTestBuilder
         return this;
     }
 
-    public PcmlTestBuilder Page(string id, string file, int width, int height)
+    /// <summary>Appends one image to the chapter strip (D-49); document order is strip order.</summary>
+    public PcmlTestBuilder Image(string file, int width, int height)
     {
-        Root.Element("pages")!.Add(new XElement("page",
-            new XAttribute("id", id), new XAttribute("file", file),
+        Root.Element("images")!.Add(new XElement("image",
+            new XAttribute("file", file),
             new XAttribute("width", width), new XAttribute("height", height)));
         return this;
     }
@@ -70,22 +71,20 @@ public sealed class PcmlTestBuilder
 
     public PcmlTestBuilder Bubble(
         string id,
-        string page,
         int order,
         string kind = "Speech",
         string status = "Untranslated",
         string? character = null,
-        PixelRect? region = null,
+        PixelPoint? marker = null,
         string source = "",
         string notes = "",
         string llmComment = "",
-        params (int Index, PixelRect Region, string Text)[] parts)
+        params (int Index, PixelPoint Marker, string Text)[] parts)
     {
-        var r = region ?? new PixelRect(100, 100, 200, 100);
+        var m = marker ?? new PixelPoint(100, 100);
         var attrs = new List<object>
         {
             new XAttribute("id", id),
-            new XAttribute("page", page),
             new XAttribute("order", order),
             new XAttribute("kind", kind),
             new XAttribute("status", status),
@@ -96,20 +95,16 @@ public sealed class PcmlTestBuilder
         }
 
         var bubble = new XElement("bubble", attrs.ToArray(),
-            new XElement("region",
-                new XAttribute("x", r.X), new XAttribute("y", r.Y),
-                new XAttribute("width", r.Width), new XAttribute("height", r.Height)),
+            new XElement("marker", new XAttribute("x", m.X), new XAttribute("y", m.Y)),
             new XElement("source", source),
             new XElement("target"));
 
         var partsEl = bubble.Element("target")!;
-        var partList = parts.Length == 0 ? new[] { (Index: 1, Region: r, Text: "") } : parts;
+        var partList = parts.Length == 0 ? new[] { (Index: 1, Marker: m, Text: "") } : parts;
         foreach (var p in partList)
         {
             partsEl.Add(new XElement("part", new XAttribute("index", p.Index),
-                new XElement("region",
-                    new XAttribute("x", p.Region.X), new XAttribute("y", p.Region.Y),
-                    new XAttribute("width", p.Region.Width), new XAttribute("height", p.Region.Height)),
+                new XElement("marker", new XAttribute("x", p.Marker.X), new XAttribute("y", p.Marker.Y)),
                 new XElement("text", p.Text)));
         }
 
@@ -142,7 +137,7 @@ public sealed class PcmlTestBuilder
     /// <summary>
     /// Writes a complete package: content.xml (deflated) + all media/unknown
     /// entries (no compression). When <paramref name="fillMissingMedia"/> is true,
-    /// tiny placeholder images fill page files without an explicit Media() entry.
+    /// tiny placeholder images fill strip files without an explicit Media() entry.
     /// </summary>
     public string BuildZip(string outputPath, bool fillMissingMedia)
     {
@@ -157,9 +152,9 @@ public sealed class PcmlTestBuilder
 
         if (fillMissingMedia)
         {
-            foreach (var page in Root.Element("pages")!.Elements("page"))
+            foreach (var image in Root.Element("images")?.Elements("image") ?? [])
             {
-                var file = (string?)page.Attribute("file") ?? "";
+                var file = (string?)image.Attribute("file") ?? "";
                 if (file.Length > 0 && !media.ContainsKey($"media/{file}"))
                 {
                     media[$"media/{file}"] = TinyPng;

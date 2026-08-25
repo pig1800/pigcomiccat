@@ -15,26 +15,37 @@ using SkiaSharp;
 namespace PigComic.App.Controls;
 
 /// <summary>
-/// One drawable overlay rectangle (M5.3). <see cref="Region"/> is in ORIGINAL
-/// image pixel space (SPEC §5.6); the control multiplies by the media scale.
+/// One image of the chapter strip, ready to render: where its file is, the ORIGINAL
+/// dimensions the model uses for coordinates, and where it sits on the strip (SPEC §5.6).
 /// </summary>
-public sealed record OverlayRect(
-    string BubbleId,
-    Rect Region,
-    BubbleStatus Status,
-    bool IsSelected,
-    IReadOnlyList<Rect>? PartRegions);
+public sealed record StripSegment(string Path, int Width, int Height, long StripTop);
 
 /// <summary>
-/// M2.4 tiled image control (SPEC §20 spike): wheel scroll, Ctrl+wheel zoom
-/// about the cursor, Ctrl+0 / FitWidth; draws resident tiles ±1 margin at the
-/// chosen level, upscales the parent coarser tile as a placeholder, gray
-/// fallback, FPS overlay (frame-time ring buffer). Tiles arrive via
-/// <see cref="DecodeQueue"/>, are converted once to WriteableBitmap and kept in
-/// a byte-budgeted cache. Never a full-size Avalonia Bitmap.
+/// One drawable bubble marker (D-50). <see cref="Point"/> is in STRIP coordinates;
+/// the control converts to screen. A marker has no size — it is drawn as a thick cross.
+/// </summary>
+public sealed record OverlayMarker(
+    string BubbleId,
+    Point Point,
+    BubbleStatus Status,
+    bool IsSelected,
+    IReadOnlyList<Point>? PartPoints);
+
+/// <summary>
+/// Tiled image control (SPEC §20): wheel scroll, Ctrl+wheel zoom about the cursor,
+/// Ctrl+0 / FitWidth; draws resident tiles ±1 margin at the chosen level, upscales the
+/// parent coarser tile as a placeholder, gray fallback, FPS overlay. Tiles arrive via
+/// <see cref="DecodeQueue"/>, are converted once to WriteableBitmap and kept in a
+/// byte-budgeted cache. Never a full-size Avalonia Bitmap.
 ///
-/// M5.3: also draws bubble overlays (SPEC §14.2) — status-colored outlines,
-/// selected fill, dashed part regions — and raises clicks in original space.
+/// <para>The control renders the chapter as ONE CONTINUOUS STRIP (D-49): it holds a
+/// pyramid per <see cref="StripSegment"/> and stacks them, so a viewport spanning an image
+/// boundary simply draws tiles from two pyramids. There is no page concept and no page
+/// switching. All public coordinates are strip coordinates in original pixels.</para>
+///
+/// <para>Overlays are markers drawn as thick crosses (D-50), sized in screen pixels so they
+/// stay legible at any zoom; clicking selects the nearest marker within
+/// <see cref="HitRadiusPx"/>.</para>
 /// </summary>
 public sealed class TiledImageControl : Control
 {
@@ -42,15 +53,33 @@ public sealed class TiledImageControl : Control
     private const double MinZoom = 0.05;
     private const double MaxZoom = 8.0;
 
+    /// <summary>Cross half-length and stroke width, in SCREEN px (SPEC §14.2).</summary>
+    private const double CrossArmPx = 11;
+    private const double CrossStrokePx = 3;
+
+    /// <summary>Click tolerance around a marker, in screen px (D-50).</summary>
+    public const double HitRadiusPx = 12;
+
+    private sealed class Segment
+    {
+        public required TileDecoder Decoder { get; init; }
+        public required int Width { get; init; }      // ORIGINAL width (strip space)
+        public required int Height { get; init; }     // ORIGINAL height (strip space)
+        public required long StripTop { get; init; }
+
+        /// <summary>media px per strip px for this image (§5.6).</summary>
+        public double MediaScale => Width > 0 ? (double)Decoder.ImageWidth / Width : 1.0;
+    }
+
     private readonly DecodeQueue _queue;
-    private readonly Dictionary<TileKey, WriteableBitmap> _tiles = [];
-    private readonly HashSet<TileKey> _inFlight = [];
-    private TileDecoder? _decoder;
+    private readonly Dictionary<(int Seg, TileKey Key), WriteableBitmap> _tiles = [];
+    private readonly HashSet<(int Seg, TileKey Key)> _inFlight = [];
+    private readonly List<Segment> _segments = [];
     private double _zoom = 1.0;
     private double _offsetX;
     private double _offsetY;
-    private string _pageId = "init";
-    private long _pageTick;
+    private string _stripId = "init";
+    private long _stripTick;
     private long _budgetUsed;
     private bool _disposed;
 
@@ -58,6 +87,8 @@ public sealed class TiledImageControl : Control
     private int _frameIndex;
     private long _lastFrameTick;
     private double _fps;
+
+    private List<OverlayMarker> _overlays = [];
 
     public TiledImageControl()
     {
@@ -67,105 +98,109 @@ public sealed class TiledImageControl : Control
         ClipToBounds = true;
     }
 
-    public bool HasImage => _decoder is not null;
+    public bool HasImage => _segments.Count > 0;
     public double Zoom => _zoom;
     public double Fps => _fps;
 
-    /// <summary>Actual media width of the current image (used for §5.6 scale).</summary>
-    public int ImageWidth => _decoder?.ImageWidth ?? 0;
+    /// <summary>Strip width in original pixels — the widest image.</summary>
+    public int StripWidth { get; private set; }
 
-    /// <summary>Raised when a bubble overlay is clicked (SPEC §14.2 smallest-topmost rule).</summary>
+    /// <summary>Strip height in original pixels — the sum of every image's height.</summary>
+    public long StripHeight { get; private set; }
+
+    /// <summary>Raised when a bubble marker is clicked (nearest within <see cref="HitRadiusPx"/>).</summary>
     public event Action<string>? OverlayClicked;
 
-    /// <summary>Raised by PageUp/PageDown when the image pane has focus (SPEC §14.2).</summary>
-    public event Action<int>? PageNavigationRequested;
+    /// <summary>Raised on PageUp/PageDown: scroll by whole viewports (SPEC §14.2).</summary>
+    public event Action<int>? ScrollRequested;
 
-    private List<OverlayRect> _overlays = [];
-    private double _overlayScale = 1.0;
-    private double _overlayPageWidth = 1.0;
+    /// <summary>Raised as the strip scrolls, with the strip Y at the top of the viewport.</summary>
+    public event Action<long>? StripPositionChanged;
 
     /// <summary>
-    /// Sets the bubble overlays for the current page; rects are in ORIGINAL
-    /// pixel space and are drawn scaled by mediaWidth/pageWidth (§5.6).
+    /// Installs the whole chapter strip. Replaces any previous strip and drops its tiles.
     /// </summary>
-    public void SetOverlays(IReadOnlyList<OverlayRect> overlays, double pageWidth)
+    public void SetStrip(IReadOnlyList<StripSegment> segments)
     {
-        _overlays = [.. overlays];
-        _overlayPageWidth = pageWidth > 0 ? pageWidth : ImageWidth > 0 ? ImageWidth : 1.0;
-        var mediaWidth = ImageWidth;
-        _overlayScale = mediaWidth > 0 ? mediaWidth / _overlayPageWidth : 1.0;
-        InvalidateVisual();
-    }
+        DisposeSegments();
+        DropAllTiles();
 
-    /// <summary>Original-space → control-screen transform for overlay math.</summary>
-    private (double X, double Y, double W, double H) OverlayScreen(double x, double y, double w, double h)
-    {
-        var s = _overlayScale * _zoom;
-        return (x * s - _offsetX, y * s - _offsetY, w * s, h * s);
-    }
+        foreach (var s in segments)
+        {
+            _segments.Add(new Segment
+            {
+                Decoder = new TileDecoder(s.Path),
+                Width = Math.Max(1, s.Width),
+                Height = Math.Max(1, s.Height),
+                StripTop = s.StripTop,
+            });
+        }
 
-    private Rect OverlayScreen(Rect r)
-    {
-        var (x, y, w, h) = OverlayScreen(r.X, r.Y, r.Width, r.Height);
-        return new Rect(x, y, w, h);
-    }
+        StripWidth = _segments.Count == 0 ? 0 : _segments.Max(s => s.Width);
+        StripHeight = _segments.Count == 0 ? 0 : _segments.Max(s => s.StripTop + s.Height);
 
-    public void SetImage(string path)
-    {
-        _decoder?.Dispose();
-        _decoder = new TileDecoder(path);
         _zoom = 1.0;
         _offsetX = 0;
         _offsetY = 0;
-        _pageId = "page-" + (++_pageTick);
-        _queue.SetPage(_pageId);
-        DropAllTiles();
+        _stripId = "strip-" + (++_stripTick);
+        _queue.SetPage(_stripId);
         FitWidth();
         InvalidateVisual();
     }
 
-    private void DropAllTiles()
+    /// <summary>Single-image convenience for the debug spike window.</summary>
+    public void SetImage(string path)
     {
-        foreach (var bmp in _tiles.Values)
-        {
-            bmp.Dispose();
-        }
-
-        _tiles.Clear();
-        _inFlight.Clear();
-        _budgetUsed = 0;
+        using var probe = new TileDecoder(path);
+        SetStrip([new StripSegment(path, probe.ImageWidth, probe.ImageHeight, 0)]);
     }
+
+    /// <summary>Sets the bubble markers; points are in STRIP coordinates.</summary>
+    public void SetOverlays(IReadOnlyList<OverlayMarker> overlays)
+    {
+        _overlays = [.. overlays];
+        InvalidateVisual();
+    }
+
+    /// <summary>Strip point → screen point.</summary>
+    private Point StripToScreen(Point strip)
+        => new(strip.X * _zoom - _offsetX, strip.Y * _zoom - _offsetY);
 
     public void FitWidth()
     {
-        if (_decoder is null || Bounds.Width <= 0)
+        if (_segments.Count == 0 || Bounds.Width <= 0 || StripWidth <= 0)
         {
             return;
         }
 
-        _zoom = Bounds.Width / _decoder.ImageWidth;
+        _zoom = Bounds.Width / StripWidth;
         _offsetX = 0;
         _offsetY = 0;
+        RaiseStripPosition();
         InvalidateVisual();
     }
 
+    private void RaiseStripPosition()
+        => StripPositionChanged?.Invoke((long)Math.Max(0, _offsetY / Math.Max(_zoom, 1e-6)));
+
     private void OnTileReady((string PageId, TileKey Key, SKImage Image) t)
     {
-        if (t.PageId != _pageId || _disposed)
+        if (!t.PageId.StartsWith(_stripId, StringComparison.Ordinal) || _disposed)
         {
             t.Image.Dispose();
             return;
         }
 
+        var seg = SegmentIndexFromQueueId(t.PageId);
         WriteableBitmap? wb;
         lock (this)
         {
-            _inFlight.Remove(t.Key);
+            _inFlight.Remove((seg, t.Key));
             wb = ToWriteableBitmap(t.Image);
             t.Image.Dispose();
             if (wb is not null)
             {
-                Install(t.Key, wb);
+                Install((seg, t.Key), wb);
             }
         }
 
@@ -176,16 +211,24 @@ public sealed class TiledImageControl : Control
     {
         lock (this)
         {
-            _inFlight.Remove(t.Key);
+            _inFlight.Remove((SegmentIndexFromQueueId(t.PageId), t.Key));
         }
     }
 
-    private void Install(TileKey key, WriteableBitmap wb)
+    private string QueueId(int segment) => $"{_stripId}#{segment}";
+
+    private static int SegmentIndexFromQueueId(string id)
+    {
+        var hash = id.LastIndexOf('#');
+        return hash >= 0 && int.TryParse(id[(hash + 1)..], out var i) ? i : 0;
+    }
+
+    private void Install((int Seg, TileKey Key) key, WriteableBitmap wb)
     {
         var size = (long)wb.PixelSize.Width * wb.PixelSize.Height * 4;
         if (_tiles.Remove(key, out var old))
         {
-            // Read the old bitmap's metrics BEFORE disposing it — a disposable
+            // Read the old bitmap's metrics BEFORE disposing it — a disposed
             // Avalonia Bitmap throws ObjectDisposedException on any access.
             var oldBudget = (long)old.PixelSize.Width * old.PixelSize.Height * 4;
             old.Dispose();
@@ -202,6 +245,28 @@ public sealed class TiledImageControl : Control
             removed.Dispose();
             _tiles.Remove(victim);
         }
+    }
+
+    private void DropAllTiles()
+    {
+        foreach (var bmp in _tiles.Values)
+        {
+            bmp.Dispose();
+        }
+
+        _tiles.Clear();
+        _inFlight.Clear();
+        _budgetUsed = 0;
+    }
+
+    private void DisposeSegments()
+    {
+        foreach (var s in _segments)
+        {
+            s.Decoder.Dispose();
+        }
+
+        _segments.Clear();
     }
 
     private static unsafe WriteableBitmap? ToWriteableBitmap(SKImage image)
@@ -255,37 +320,25 @@ public sealed class TiledImageControl : Control
     protected override void OnPointerPressed(PointerPressedEventArgs e)
     {
         base.OnPointerPressed(e);
-        if (_decoder is null || _overlays.Count == 0)
+        if (_segments.Count == 0 || _overlays.Count == 0)
         {
             return;
         }
 
         var p = e.GetPosition(this);
-        // Screen → ORIGINAL space (§5.6): undo overlay scale + zoom + offset.
-        var s = _overlayScale * _zoom;
-        if (s <= 0)
-        {
-            return;
-        }
 
-        var ox = (p.X + _offsetX) / s;
-        var oy = (p.Y + _offsetY) / s;
-
-        OverlayRect? best = null;
-        double bestArea = double.MaxValue;
+        // Nearest marker within the hit radius wins (D-50) — there are no areas to compare.
+        OverlayMarker? best = null;
+        var bestDistance = double.MaxValue;
         foreach (var overlay in _overlays)
         {
-            var r = overlay.Region;
-            if (ox < r.X || oy < r.Y || ox > r.X + r.Width || oy > r.Y + r.Height)
+            var screen = StripToScreen(overlay.Point);
+            var dx = screen.X - p.X;
+            var dy = screen.Y - p.Y;
+            var distance = Math.Sqrt((dx * dx) + (dy * dy));
+            if (distance <= HitRadiusPx && distance < bestDistance)
             {
-                continue;
-            }
-
-            // Smallest region wins; ties keep the last (topmost = drawn later).
-            var area = r.Width * r.Height;
-            if (area <= bestArea)
-            {
-                bestArea = area;
+                bestDistance = distance;
                 best = overlay;
             }
         }
@@ -300,7 +353,7 @@ public sealed class TiledImageControl : Control
     protected override void OnPointerWheelChanged(PointerWheelEventArgs e)
     {
         base.OnPointerWheelChanged(e);
-        if (_decoder is null)
+        if (_segments.Count == 0)
         {
             return;
         }
@@ -315,6 +368,8 @@ public sealed class TiledImageControl : Control
         {
             _offsetX -= e.Delta.X * 40;
             _offsetY -= e.Delta.Y * 40;
+            ClampOffsets();
+            RaiseStripPosition();
             InvalidateVisual();
             e.Handled = true;
         }
@@ -327,6 +382,41 @@ public sealed class TiledImageControl : Control
         _offsetX = px - (px - _offsetX) * k;
         _offsetY = py - (py - _offsetY) * k;
         _zoom = newZoom;
+        ClampOffsets();
+        RaiseStripPosition();
+        InvalidateVisual();
+    }
+
+    private void ClampOffsets()
+    {
+        var maxX = Math.Max(0, StripWidth * _zoom - Bounds.Width);
+        var maxY = Math.Max(0, StripHeight * _zoom - Bounds.Height);
+        _offsetX = Math.Clamp(_offsetX, 0, maxX);
+        _offsetY = Math.Clamp(_offsetY, 0, maxY);
+    }
+
+    /// <summary>Scrolls by whole viewports (PageUp/PageDown).</summary>
+    public void ScrollByViewports(int delta)
+    {
+        _offsetY += delta * Bounds.Height;
+        ClampOffsets();
+        RaiseStripPosition();
+        InvalidateVisual();
+    }
+
+    public void ScrollToStart()
+    {
+        _offsetY = 0;
+        ClampOffsets();
+        RaiseStripPosition();
+        InvalidateVisual();
+    }
+
+    public void ScrollToEnd()
+    {
+        _offsetY = double.MaxValue;
+        ClampOffsets();
+        RaiseStripPosition();
         InvalidateVisual();
     }
 
@@ -351,53 +441,56 @@ public sealed class TiledImageControl : Control
                 e.Handled = true;
                 break;
             case Key.PageUp:
-                PageNavigationRequested?.Invoke(-1);
+                ScrollRequested?.Invoke(-1);
                 e.Handled = true;
                 break;
             case Key.PageDown:
-                PageNavigationRequested?.Invoke(1);
+                ScrollRequested?.Invoke(1);
+                e.Handled = true;
+                break;
+            case Key.Home:
+                ScrollToStart();
+                e.Handled = true;
+                break;
+            case Key.End:
+                ScrollToEnd();
                 e.Handled = true;
                 break;
         }
     }
 
     /// <summary>
-    /// Centers the given ORIGINAL-space region if it is off-screen (SPEC §14.2:
-    /// selecting a row auto-scrolls/centers the region; if off-screen vertically,
-    /// center it; horizontal is kept unless the region is off-side).
+    /// Scrolls the given STRIP point into view if it is off-screen (SPEC §14.2), centring
+    /// vertically; horizontal is only touched when the point is off to a side.
     /// </summary>
-    public void CenterOn(Rect originalRegion)
+    public void CenterOn(Point stripPoint)
     {
-        if (_decoder is null || Bounds.Width <= 0 || Bounds.Height <= 0)
+        if (_segments.Count == 0 || Bounds.Width <= 0 || Bounds.Height <= 0)
         {
             return;
         }
 
-        var screen = OverlayScreen(originalRegion);
-        var margin = 16.0;
-        var insideX = screen.X >= -margin && screen.X + screen.Width <= Bounds.Width + margin;
-        var insideY = screen.Y >= -margin && screen.Y + screen.Height <= Bounds.Height + margin;
-
+        var screen = StripToScreen(stripPoint);
+        const double margin = 24.0;
+        var insideX = screen.X >= margin && screen.X <= Bounds.Width - margin;
+        var insideY = screen.Y >= margin && screen.Y <= Bounds.Height - margin;
         if (insideX && insideY)
         {
             return;
         }
 
-        var maxX = Math.Max(0, _decoder.ImageWidth * _zoom - Bounds.Width);
-        var maxY = Math.Max(0, _decoder.ImageHeight * _zoom - Bounds.Height);
-
         if (!insideY)
         {
-            var centerY = originalRegion.Y * _overlayScale * _zoom + (originalRegion.Height * _overlayScale * _zoom) / 2;
-            _offsetY = Math.Clamp(centerY - Bounds.Height / 2, 0, maxY);
+            _offsetY = (stripPoint.Y * _zoom) - (Bounds.Height / 2);
         }
 
         if (!insideX)
         {
-            var centerX = originalRegion.X * _overlayScale * _zoom + (originalRegion.Width * _overlayScale * _zoom) / 2;
-            _offsetX = Math.Clamp(centerX - Bounds.Width / 2, 0, maxX);
+            _offsetX = (stripPoint.X * _zoom) - (Bounds.Width / 2);
         }
 
+        ClampOffsets();
+        RaiseStripPosition();
         InvalidateVisual();
     }
 
@@ -405,106 +498,140 @@ public sealed class TiledImageControl : Control
     {
         RecordFrame();
         base.Render(context);
-        if (_decoder is null || Bounds.Width <= 0 || Bounds.Height <= 0)
+        if (_segments.Count == 0 || Bounds.Width <= 0 || Bounds.Height <= 0)
         {
             context.FillRectangle(Brushes.Gray, Bounds);
             return;
         }
 
-        var zoom = _zoom;
-        var imgW = _decoder.ImageWidth;
-        var imgH = _decoder.ImageHeight;
-        var level = TilePyramid.SelectLevel(imgW, imgH, zoom);
-        var viewport = (_offsetX / zoom, _offsetY / zoom, Bounds.Width / zoom, Bounds.Height / zoom);
-        var tiles = TilePyramid.VisibleTilesAtLevel(imgW, imgH, level, viewport, margin: 1);
+        // Viewport in strip coordinates.
+        var viewTop = _offsetY / _zoom;
+        var viewBottom = (_offsetY + Bounds.Height) / _zoom;
 
-        foreach (var tile in tiles)
+        for (var i = 0; i < _segments.Count; i++)
         {
-            var rect = TileDisplayRect(tile, zoom, level);
-            if (rect.X >= Bounds.Width || rect.Y >= Bounds.Height ||
-                rect.X + rect.W <= 0 || rect.Y + rect.H <= 0)
+            var seg = _segments[i];
+            if (seg.StripTop + seg.Height <= viewTop || seg.StripTop >= viewBottom)
             {
-                continue;
+                continue;   // entirely outside the viewport
             }
 
-            var dst = new Rect(rect.X, rect.Y, rect.W, rect.H);
-            if (_tiles.TryGetValue(tile, out var bmp))
-            {
-                context.DrawImage(bmp, dst);
-            }
-            else if (!TryCoarsePlaceholder(context, tile, dst))
-            {
-                context.FillRectangle(Brushes.Gray, dst);
-            }
-
-            lock (this)
-            {
-                if (!_inFlight.Add(tile))
-                {
-                    continue;
-                }
-            }
-
-            var decoder = _decoder;
-            _queue.Submit(_pageId, tile, Priority(tile), _ => decoder.DecodeTile(tile, CancellationToken.None));
+            RenderSegment(context, i, seg);
         }
 
         DrawOverlays(context);
         DrawFps(context);
     }
 
-    /// <summary>SPEC §14.2 overlay layer: status outlines, selected fill + dashed parts.</summary>
-    private void DrawOverlays(DrawingContext context)
+    private void RenderSegment(DrawingContext context, int index, Segment seg)
     {
-        if (_decoder is null || _overlays.Count == 0)
+        // This image's own media-pixel space: strip zoom scaled by its media scale.
+        var mediaZoom = _zoom / seg.MediaScale;
+        var imgW = seg.Decoder.ImageWidth;
+        var imgH = seg.Decoder.ImageHeight;
+        if (imgW <= 0 || imgH <= 0)
         {
             return;
         }
 
+        var level = TilePyramid.SelectLevel(imgW, imgH, mediaZoom);
+
+        // Where this image's top-left sits on screen.
+        var originX = -_offsetX;
+        var originY = (seg.StripTop * _zoom) - _offsetY;
+
+        var viewport = (
+            -originX / mediaZoom,
+            -originY / mediaZoom,
+            Bounds.Width / mediaZoom,
+            Bounds.Height / mediaZoom);
+        var tiles = TilePyramid.VisibleTilesAtLevel(imgW, imgH, level, viewport, margin: 1);
+
+        foreach (var tile in tiles)
+        {
+            var scale = TilePyramid.LevelScale(level);
+            var srcX = tile.Col * TilePyramid.TileSize * scale;
+            var srcY = tile.Row * TilePyramid.TileSize * scale;
+            var srcW = Math.Min(TilePyramid.TileSize * scale, imgW - srcX);
+            var srcH = Math.Min(TilePyramid.TileSize * scale, imgH - srcY);
+
+            var dst = new Rect(
+                originX + (srcX * mediaZoom),
+                originY + (srcY * mediaZoom),
+                srcW * mediaZoom,
+                srcH * mediaZoom);
+
+            if (dst.X >= Bounds.Width || dst.Y >= Bounds.Height ||
+                dst.X + dst.Width <= 0 || dst.Y + dst.Height <= 0)
+            {
+                continue;
+            }
+
+            var key = (index, tile);
+            if (_tiles.TryGetValue(key, out var bmp))
+            {
+                context.DrawImage(bmp, dst);
+            }
+            else if (!TryCoarsePlaceholder(context, index, tile, dst))
+            {
+                context.FillRectangle(Brushes.Gray, dst);
+            }
+
+            lock (this)
+            {
+                if (!_inFlight.Add(key))
+                {
+                    continue;
+                }
+            }
+
+            var decoder = seg.Decoder;
+            _queue.Submit(QueueId(index), tile, Priority(tile), _ => decoder.DecodeTile(tile, CancellationToken.None));
+        }
+    }
+
+    /// <summary>SPEC §14.2 overlay layer: a thick cross per marker (D-50).</summary>
+    private void DrawOverlays(DrawingContext context)
+    {
         foreach (var overlay in _overlays)
         {
-            var rect = OverlayScreen(overlay.Region);
-            if (rect.X >= Bounds.Width || rect.Y >= Bounds.Height ||
-                rect.X + rect.Width <= 0 || rect.Y + rect.Height <= 0)
+            var screen = StripToScreen(overlay.Point);
+            if (screen.X < -CrossArmPx || screen.Y < -CrossArmPx ||
+                screen.X > Bounds.Width + CrossArmPx || screen.Y > Bounds.Height + CrossArmPx)
             {
                 continue;
             }
 
             var color = UiPalette.StatusColor(overlay.Status);
-            var outline = new Pen(new SolidColorBrush(color), overlay.IsSelected ? 3 : 2);
-            if (overlay.IsSelected)
-            {
-                context.FillRectangle(new SolidColorBrush(color, 0.15f), rect);
-            }
+            DrawCross(context, screen, color, overlay.IsSelected);
 
-            context.DrawRectangle(null, outline, rect);
-
-            if (overlay.IsSelected && overlay.PartRegions is { } parts)
+            if (overlay.IsSelected && overlay.PartPoints is { } parts)
             {
-                var dashed = new Pen(new SolidColorBrush(color), 1, new DashStyle([3, 2], 0));
                 foreach (var part in parts)
                 {
-                    var pr = OverlayScreen(part);
-                    if (pr.Width > 0 && pr.Height > 0)
-                    {
-                        context.DrawRectangle(null, dashed, pr);
-                    }
+                    DrawCross(context, StripToScreen(part), color, selected: false, arm: CrossArmPx * 0.7, stroke: 1.5);
                 }
             }
         }
     }
 
-    private (double X, double Y, double W, double H) TileDisplayRect(TileKey tile, double zoom, int level)
+    private static void DrawCross(
+        DrawingContext context, Point at, Color color, bool selected,
+        double arm = CrossArmPx, double stroke = CrossStrokePx)
     {
-        var scale = TilePyramid.LevelScale(level);
-        var srcX = tile.Col * TilePyramid.TileSize * scale;
-        var srcY = tile.Row * TilePyramid.TileSize * scale;
-        var srcW = Math.Min(TilePyramid.TileSize * scale, _decoder!.ImageWidth - srcX);
-        var srcH = Math.Min(TilePyramid.TileSize * scale, _decoder!.ImageHeight - srcY);
-        return (srcX * zoom - _offsetX, srcY * zoom - _offsetY, srcW * zoom, srcH * zoom);
+        // A dark halo first so the cross stays visible over busy art.
+        var halo = new Pen(new SolidColorBrush(Colors.Black, 0.55), stroke + 2, lineCap: PenLineCap.Round);
+        var pen = new Pen(new SolidColorBrush(color), selected ? stroke + 1 : stroke, lineCap: PenLineCap.Round);
+        var a = selected ? arm * 1.25 : arm;
+
+        foreach (var p in new[] { halo, pen })
+        {
+            context.DrawLine(p, new Point(at.X - a, at.Y), new Point(at.X + a, at.Y));
+            context.DrawLine(p, new Point(at.X, at.Y - a), new Point(at.X, at.Y + a));
+        }
     }
 
-    private bool TryCoarsePlaceholder(DrawingContext context, TileKey tile, Rect dst)
+    private bool TryCoarsePlaceholder(DrawingContext context, int segment, TileKey tile, Rect dst)
     {
         if (tile.Level <= 0)
         {
@@ -512,7 +639,7 @@ public sealed class TiledImageControl : Control
         }
 
         var parent = new TileKey(tile.Level - 1, tile.Col >> 1, tile.Row >> 1);
-        if (!_tiles.TryGetValue(parent, out var coarse))
+        if (!_tiles.TryGetValue((segment, parent), out var coarse))
         {
             return false;
         }
@@ -521,13 +648,7 @@ public sealed class TiledImageControl : Control
         return true;
     }
 
-    private static double Priority(TileKey key)
-    {
-        // Called by the caller of Submit with the viewport-derived order already
-        // provided by the visible-set ordering; a simple row-major tie break keeps
-        // the queue deterministic.
-        return key.Row * 1e6 + key.Col;
-    }
+    private static double Priority(TileKey key) => (key.Row * 1e6) + key.Col;
 
     private void DrawFps(DrawingContext context)
     {
@@ -572,7 +693,6 @@ public sealed class TiledImageControl : Control
         _disposed = true;
         DropAllTiles();
         _queue.Dispose();
-        _decoder?.Dispose();
-        _decoder = null;
+        DisposeSegments();
     }
 }

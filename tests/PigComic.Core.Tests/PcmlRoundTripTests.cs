@@ -28,11 +28,11 @@ public class PcmlRoundTripTests : IDisposable
     private const string FixtureXml =
         """
         <?xml version="1.0" encoding="utf-8"?>
-        <pcml version="1" tool="tiaoman"><meta><title>勇者ピッグ</title><chapter>012</chapter><sourceLanguage>ja</sourceLanguage>
-        <targetLanguage>zh-Hant</targetLanguage></meta><characters><character name="ピッグ"/></characters><pages>
-        <page id="p0001" file="0001.jpg" width="1080" height="41250"/></pages><bubbles>
-        <bubble id="p0001-b0001" page="p0001" order="1" kind="Speech" character="ピッグ" status="Translated"><region x="612" y="480" width="240" height="310"/>
-        <source>おはよう　ございます！</source><target><part index="1"><region x="612" y="480" width="240" height="310"/><text>早安！</text></part></target>
+        <pcml version="2" tool="tiaoman"><meta><title>勇者ピッグ</title><chapter>012</chapter><sourceLanguage>zh-CN</sourceLanguage>
+        <targetLanguage>ja</targetLanguage></meta><characters><character name="ピッグ"/></characters><images>
+        <image file="0001.jpg" width="1080" height="41250"/></images><bubbles>
+        <bubble id="b0001" order="1" kind="Speech" character="ピッグ" status="Translated"><marker x="612" y="480"/>
+        <source>おはよう　ございます！</source><target><part index="1"><marker x="612" y="480"/><text>早安！</text></part></target>
         <userData opaque="1"><anything>hi</anything></userData></bubble>
         </bubbles><futureFeature><weird>preserved</weird></futureFeature></pcml>
         """;
@@ -91,7 +91,7 @@ public class PcmlRoundTripTests : IDisposable
         var path = BuildFixture("b2.pcml");
         using (var doc = PcmlDocument.Open(path))
         {
-            doc.Model.Bubbles.Single(b => b.Id == "p0001-b0001").Parts[0].Text = "おはよう！";
+            doc.Model.Bubbles.Single(b => b.Id == "b0001").Parts[0].Text = "おはよう！";
             await doc.SaveAsync(CancellationToken.None);
         }
 

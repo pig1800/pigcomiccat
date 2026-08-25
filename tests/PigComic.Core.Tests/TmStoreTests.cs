@@ -32,7 +32,7 @@ public class TmStoreTests : IDisposable
     [Fact]
     public async Task Upsert_Same_Source_Character_Newest_Wins()
     {
-        using var store = new TmStore(_db, "ja", "zh-Hant");
+        using var store = new TmStore(_db, "zh-CN", "ja");
         var first = await store.UpsertAsync("こんにちは", "你好", "ピッグ", null, null, null, null, CancellationToken.None);
         var second = await store.UpsertAsync("こんにちは", "您好", "ピッグ", null, null, null, null, CancellationToken.None);
 
@@ -46,7 +46,7 @@ public class TmStoreTests : IDisposable
     [Fact]
     public async Task Same_Source_Different_Character_Is_Separate_Entry()
     {
-        using var store = new TmStore(_db, "ja", "zh-Hant");
+        using var store = new TmStore(_db, "zh-CN", "ja");
         await store.UpsertAsync("こんにちは", "你好", "ピッグ", null, null, null, null, CancellationToken.None);
         await store.UpsertAsync("こんにちは", "您好", "魔王", null, null, null, null, CancellationToken.None);
         Assert.Equal(2, store.CountEntries());
@@ -55,7 +55,7 @@ public class TmStoreTests : IDisposable
     [Fact]
     public async Task Empty_Target_Writes_Nothing()
     {
-        using var store = new TmStore(_db, "ja", "zh-Hant");
+        using var store = new TmStore(_db, "zh-CN", "ja");
         var r = await store.UpsertAsync("こんにちは", "  ", "ピッグ", null, null, null, null, CancellationToken.None);
         Assert.Null(r);
         Assert.Equal(0, store.CountEntries());
@@ -64,7 +64,7 @@ public class TmStoreTests : IDisposable
     [Fact]
     public async Task Empty_Normalized_Source_Writes_Nothing()
     {
-        using var store = new TmStore(_db, "ja", "zh-Hant");
+        using var store = new TmStore(_db, "zh-CN", "ja");
         var r = await store.UpsertAsync("　 ", "你好", "ピッグ", null, null, null, null, CancellationToken.None);
         Assert.Null(r);
         Assert.Equal(0, store.CountEntries());
@@ -73,7 +73,7 @@ public class TmStoreTests : IDisposable
     [Fact]
     public async Task Grams_Rows_Per_Entry()
     {
-        using var store = new TmStore(_db, "ja", "zh-Hant");
+        using var store = new TmStore(_db, "zh-CN", "ja");
         await store.UpsertAsync("こんにちは", "你好", null, null, null, null, null, CancellationToken.None);
         Assert.True(store.CountGrams() >= 4); // 4 distinct bigrams
 
@@ -98,7 +98,7 @@ public class TmStoreTests : IDisposable
     [Fact]
     public async Task RebuildGrams_After_Wipe_Restores_Identical_Set()
     {
-        using var store = new TmStore(_db, "ja", "zh-Hant");
+        using var store = new TmStore(_db, "zh-CN", "ja");
         await store.UpsertAsync("こんにちは", "你好", null, null, null, null, null, CancellationToken.None);
         await store.UpsertAsync("おはよう", "早上好", null, null, null, null, null, CancellationToken.None);
 
@@ -116,7 +116,7 @@ public class TmStoreTests : IDisposable
     [Fact]
     public void Mismatched_Language_Pair_Throws()
     {
-        using var store = new TmStore(_db, "ja", "zh-Hant");
+        using var store = new TmStore(_db, "zh-CN", "ja");
         Assert.Throws<InvalidOperationException>(() => new TmStore(_db, "ja", "ko"));
         Assert.Throws<InvalidOperationException>(() => new TmStore(_db, "en", "zh-Hant"));
     }
@@ -124,7 +124,7 @@ public class TmStoreTests : IDisposable
     [Fact]
     public async Task Delete_Removes_Entry_And_Grams()
     {
-        using var store = new TmStore(_db, "ja", "zh-Hant");
+        using var store = new TmStore(_db, "zh-CN", "ja");
         var e = await store.UpsertAsync("こんにちは", "你好", null, null, null, null, null, CancellationToken.None);
         Assert.True(await store.DeleteAsync(e!.Id, CancellationToken.None));
         Assert.Equal(0, store.CountEntries());
@@ -135,6 +135,6 @@ public class TmStoreTests : IDisposable
     public void OpenExisting_On_Missing_File_Throws()
     {
         Assert.Throws<FileNotFoundException>(() =>
-            TmStore.OpenExisting(_db + "-nope", "ja", "zh-Hant"));
+            TmStore.OpenExisting(_db + "-nope", "zh-CN", "ja"));
     }
 }
