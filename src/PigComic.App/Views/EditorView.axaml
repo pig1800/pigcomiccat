@@ -19,6 +19,9 @@
                 <TextBlock Text="{Binding SaveStateLabel}"/>
                 <TextBlock Text="· READ-ONLY" Foreground="#B23A00" FontWeight="SemiBold"
                            IsVisible="{Binding IsReadOnly}"/>
+                <CheckBox Content="Skip confirmed" IsChecked="{Binding SkipConfirmed, Mode=TwoWay}"
+                          VerticalAlignment="Center"
+                          ToolTip.Tip="After confirming (Ctrl+Enter), advance past bubbles already Translated/Reviewed. Locked bubbles are always skipped. Temporary home — moves to the settings window in M8.6."/>
             </StackPanel>
         </Border>
 

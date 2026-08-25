@@ -25,9 +25,11 @@ namespace PigComic.App.Controls;
 /// events. The guard's primary effect is therefore: Enter is handled here ONLY
 /// if it actually arrives as an unhandled raw key.</item>
 /// </list>
-/// Enter = confirm (multi-line editors: Shift+Enter = line break), both
-/// re-used verbatim by the M5 editor (D-32). Confirmations are counted and
-/// exposed so the checklist can detect a leaking path.
+/// Confirm gesture depends on mode (D-32/D-52): with <see cref="EnterInsertsNewline"/>
+/// true (target part editors), Enter = newline and Ctrl+Enter = confirm; otherwise
+/// Enter = confirm and Shift+Enter = newline in multi-line editors. The IME guard
+/// is identical in both modes. Confirmations are counted and exposed so the
+/// checklist can detect a leaking path.
 /// </summary>
 /// <remarks>
 /// <para><b>IME rendering (SPEC §21 escalation, D-40).</b> This editor installs a
@@ -65,6 +67,15 @@ public class PartTextEditor : TextBox
     public long ConfirmCount { get; private set; }
 
     /// <summary>
+    /// When true (target part editors, owner directive 2026-08-25, D-52): plain Enter
+    /// inserts a newline, Ctrl+Enter fires <see cref="ConfirmRequested"/>, Ctrl+Shift+Enter
+    /// fires <see cref="VariantConfirmRequested"/> (Reviewed). When false (default; source
+    /// inline editor, dialogs): plain Enter fires <see cref="ConfirmRequested"/> and
+    /// Shift+Enter is the newline in multi-line editors.
+    /// </summary>
+    public bool EnterInsertsNewline { get; set; }
+
+    /// <summary>
     /// The templated presenter, exposed so the <c>--smoke</c> self-check can verify that the
     /// PartTextEditorTheme actually applied and produced an <see cref="Ime.ImeTextPresenter"/>.
     /// Null until <see cref="OnApplyTemplate"/> runs.
@@ -72,9 +83,10 @@ public class PartTextEditor : TextBox
     internal TextPresenter? TemplatePresenter => _presenter;
 
     /// <summary>
-    /// When true (default), Enter fires <see cref="ConfirmRequested"/> and is marked handled
-    /// (SPEC §21 item 4 guard for the part editor). Set false in contexts where Enter must
-    /// fall through to a default button (e.g., dialogs).
+    /// When true (default), the confirm gesture fires <see cref="ConfirmRequested"/> and is
+    /// marked handled (SPEC §21 item 4 guard for the part editor). Which key that is depends
+    /// on <see cref="EnterInsertsNewline"/>: Enter (legacy mode) or Ctrl+Enter (D-52 mode).
+    /// Set false in contexts where Enter must fall through to a default button (e.g., dialogs).
     /// </summary>
     public bool ConfirmOnEnter { get; set; } = true;
 
@@ -181,6 +193,15 @@ public class PartTextEditor : TextBox
             var ctrl = e.KeyModifiers.HasFlag(KeyModifiers.Control);
             var shift = e.KeyModifiers.HasFlag(KeyModifiers.Shift);
 
+            if (EnterInsertsNewline && !ctrl)
+            {
+                // D-52: Enter = line break in target part editors (Shift+Enter is a
+                // harmless alias — both fall through to the TextBox newline).
+                base.OnKeyDown(e);
+                e.Handled = true;
+                return;
+            }
+
             if (MultiLine && shift && !ctrl)
             {
                 base.OnKeyDown(e);
@@ -201,7 +222,15 @@ public class PartTextEditor : TextBox
                 ConfirmCount++;
                 if (ctrl)
                 {
-                    VariantConfirmRequested?.Invoke(this, shift ? ConfirmVariant.CtrlShiftEnter : ConfirmVariant.CtrlEnter);
+                    if (EnterInsertsNewline && !shift)
+                    {
+                        // D-52: in the target editor Ctrl+Enter IS the confirm gesture.
+                        ConfirmRequested?.Invoke(this, EventArgs.Empty);
+                    }
+                    else
+                    {
+                        VariantConfirmRequested?.Invoke(this, shift ? ConfirmVariant.CtrlShiftEnter : ConfirmVariant.CtrlEnter);
+                    }
                 }
                 else
                 {

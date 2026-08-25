@@ -39,7 +39,8 @@
                                     <DataTemplate x:DataType="vm:PartViewModel">
                                         <controls:PartTextEditor Text="{Binding Text, Mode=TwoWay}"
                                                                  IsReadOnly="{Binding EditorReadOnly}"
-                                                                 MultiLine="True" MinHeight="26"
+                                                                 MultiLine="True" EnterInsertsNewline="True"
+                                                                 MinHeight="26"
                                                                  Margin="0,1" FontSize="13"/>
                                     </DataTemplate>
                                 </ItemsControl.ItemTemplate>

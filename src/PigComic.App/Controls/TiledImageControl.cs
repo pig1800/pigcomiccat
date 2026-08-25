@@ -90,13 +90,42 @@ public sealed class TiledImageControl : Control
 
     private List<OverlayMarker> _overlays = [];
 
+    private readonly MarkerInteraction _interaction = new();
+    private Point _dragPreviewStrip;
+
     public TiledImageControl()
     {
         _queue = new DecodeQueue(null);
         _queue.TileReady += OnTileReady;
         _queue.TileFailed += OnTileFailed;
         ClipToBounds = true;
+        IsHitTestVisible = true;
     }
+
+    /// <summary>True while Ctrl+B placement mode is armed (SPEC §15.2).</summary>
+    public bool PlacementArmed
+    {
+        get => _interaction.PlacementArmed;
+        set
+        {
+            if (_interaction.PlacementArmed == value)
+            {
+                return;
+            }
+
+            _interaction.PlacementArmed = value;
+            Cursor = value ? new Avalonia.Input.Cursor(StandardCursorType.Cross) : null;
+        }
+    }
+
+    /// <summary>Raised when a placement-mode click drops a new bubble (strip coords, clamped).</summary>
+    public event Action<PigComic.Core.Domain.PixelPoint>? PlaceMarkerRequested;
+
+    /// <summary>
+    /// Raised when a marker drag commits on mouse-up (SPEC §15.1). <paramref name="partIndex"/>
+    /// is 1-based for a part marker, null for the source marker; the point is in strip coords.
+    /// </summary>
+    public event Action<string, int?, PigComic.Core.Domain.PixelPoint>? MarkerDragCompleted;
 
     public bool HasImage => _segments.Count > 0;
     public double Zoom => _zoom;
@@ -161,10 +190,6 @@ public sealed class TiledImageControl : Control
         _overlays = [.. overlays];
         InvalidateVisual();
     }
-
-    /// <summary>Strip point → screen point.</summary>
-    private Point StripToScreen(Point strip)
-        => new(strip.X * _zoom - _offsetX, strip.Y * _zoom - _offsetY);
 
     public void FitWidth()
     {
@@ -320,35 +345,197 @@ public sealed class TiledImageControl : Control
     protected override void OnPointerPressed(PointerPressedEventArgs e)
     {
         base.OnPointerPressed(e);
-        if (_segments.Count == 0 || _overlays.Count == 0)
+        if (_segments.Count == 0)
         {
             return;
         }
 
-        var p = e.GetPosition(this);
-
-        // Nearest marker within the hit radius wins (D-50) — there are no areas to compare.
-        OverlayMarker? best = null;
-        var bestDistance = double.MaxValue;
-        foreach (var overlay in _overlays)
+        var strip = ScreenToStrip(e.GetPosition(this));
+        var shift = e.KeyModifiers.HasFlag(KeyModifiers.Shift);
+        if (InteractionPointerPressed(strip, shift))
         {
-            var screen = StripToScreen(overlay.Point);
-            var dx = screen.X - p.X;
-            var dy = screen.Y - p.Y;
-            var distance = Math.Sqrt((dx * dx) + (dy * dy));
-            if (distance <= HitRadiusPx && distance < bestDistance)
-            {
-                bestDistance = distance;
-                best = overlay;
-            }
-        }
-
-        if (best is not null)
-        {
-            OverlayClicked?.Invoke(best.BubbleId);
+            e.Pointer.Capture(this);
             e.Handled = true;
         }
     }
+
+    protected override void OnPointerMoved(PointerEventArgs e)
+    {
+        base.OnPointerMoved(e);
+        if (_interaction.Drag is not null)
+        {
+            InteractionPointerMoved(ScreenToStrip(e.GetPosition(this)));
+            e.Handled = true;
+        }
+    }
+
+    protected override void OnPointerReleased(PointerReleasedEventArgs e)
+    {
+        base.OnPointerReleased(e);
+        if (_interaction.Drag is not null)
+        {
+            InteractionPointerReleased(ScreenToStrip(e.GetPosition(this)));
+            e.Pointer.Capture(null);
+            e.Handled = true;
+        }
+    }
+
+    /// <summary>Screen point → strip coordinates.</summary>
+    private Point ScreenToStrip(Point screen)
+        => new((screen.X + _offsetX) / _zoom, (screen.Y + _offsetY) / _zoom);
+
+    /// <summary>Strip point → screen point.</summary>
+    public Point StripToScreen(Point strip)
+        => new(strip.X * _zoom - _offsetX, strip.Y * _zoom - _offsetY);
+
+    /// <summary>
+    /// M6 interaction entry points (internal for the smoke self-check; the pointer
+    /// handlers feed them screen→strip-converted positions). Returns true when the
+    /// press consumed the event.
+    /// </summary>
+    internal bool InteractionPointerPressed(Point strip, bool shiftHeld)
+    {
+        if (_interaction.PlacementArmed)
+        {
+            // SPEC §15.2: "one click on the strip". Off-strip clicks (the gray border when
+            // zoomed out) are ignored — no bubble, stay armed — instead of clamping to the
+            // edge and dropping a misleading edge bubble.
+            if (StripWidth <= 0 || strip.X < 0 || strip.X >= StripWidth ||
+                strip.Y < 0 || strip.Y >= StripHeight)
+            {
+                return false;
+            }
+
+            PlaceMarkerRequested?.Invoke(ToPixel(strip));
+            if (!shiftHeld)
+            {
+                PlacementArmed = false;
+            }
+
+            return true;
+        }
+
+        var grab = HitTest(strip);
+        if (grab.Kind == MarkerInteraction.GrabKind.None)
+        {
+            return false;
+        }
+
+        var marker = OverlayById(grab.BubbleId);
+        if (marker is null)
+        {
+            return false;
+        }
+
+        var original = grab.Kind == MarkerInteraction.GrabKind.Source
+            ? marker.Point
+            : marker.PartPoints![grab.PartIndex];
+        _interaction.Drag = new MarkerInteraction.DragState(
+            grab.BubbleId, grab.Kind == MarkerInteraction.GrabKind.Part ? grab.PartIndex + 1 : null,
+            original, strip - original);
+        _dragPreviewStrip = original;
+        OverlayClicked?.Invoke(grab.BubbleId); // press also selects (SPEC §14.2)
+        InvalidateVisual();
+        return true;
+    }
+
+    internal void InteractionPointerMoved(Point strip)
+    {
+        if (_interaction.Drag is not { } drag)
+        {
+            return;
+        }
+
+        _dragPreviewStrip = ClampPoint(strip - drag.GrabOffsetStrip);
+        InvalidateVisual();
+    }
+
+    internal void InteractionPointerReleased(Point strip)
+    {
+        if (_interaction.Drag is not { } drag)
+        {
+            return;
+        }
+
+        InteractionPointerMoved(strip);
+        _interaction.Drag = null;
+        if (_dragPreviewStrip != drag.OriginalStrip)
+        {
+            MarkerDragCompleted?.Invoke(drag.BubbleId, drag.PartIndex, ToPixel(_dragPreviewStrip));
+        }
+
+        InvalidateVisual();
+    }
+
+    /// <summary>Esc: cancels an in-flight drag and disarms placement (SPEC §14.6).</summary>
+    public bool CancelInteraction()
+    {
+        if (!_interaction.AnyActive)
+        {
+            return false;
+        }
+
+        _interaction.Cancel();
+        Cursor = null;
+        InvalidateVisual();
+        return true;
+    }
+
+    /// <summary>Nearest marker (source or, for a selected bubble, part) within the hit radius.</summary>
+    private MarkerInteraction.Grab HitTest(Point strip)
+    {
+        var radius = HitRadiusPx / _zoom;
+        MarkerInteraction.Grab? best = null;
+        var bestDistance = double.MaxValue;
+
+        foreach (var overlay in _overlays)
+        {
+            // Source marker first: when a part marker coincides with it (part 1 sits on
+            // the source marker, D-18), the strict-less comparison keeps the source grab.
+            var sd = Distance(overlay.Point, strip);
+            if (sd <= radius && sd < bestDistance)
+            {
+                bestDistance = sd;
+                best = new MarkerInteraction.Grab(MarkerInteraction.GrabKind.Source, overlay.BubbleId, -1);
+            }
+
+            if (!overlay.IsSelected || overlay.PartPoints is null)
+            {
+                continue;
+            }
+
+            for (var i = 0; i < overlay.PartPoints.Count; i++)
+            {
+                var pd = Distance(overlay.PartPoints[i], strip);
+                if (pd <= radius && pd < bestDistance)
+                {
+                    bestDistance = pd;
+                    best = new MarkerInteraction.Grab(MarkerInteraction.GrabKind.Part, overlay.BubbleId, i);
+                }
+            }
+        }
+
+        return best ?? MarkerInteraction.Grab.Empty;
+    }
+
+    private OverlayMarker? OverlayById(string bubbleId)
+        => _overlays.FirstOrDefault(o => o.BubbleId == bubbleId);
+
+    private static double Distance(Point a, Point b)
+    {
+        var dx = a.X - b.X;
+        var dy = a.Y - b.Y;
+        return Math.Sqrt((dx * dx) + (dy * dy));
+    }
+
+    /// <summary>Clamps to the strip: 0 ≤ x &lt; StripWidth, 0 ≤ y &lt; StripHeight (SPEC §15.1).</summary>
+    private Point ClampPoint(Point strip)
+        => new(
+            Math.Clamp(strip.X, 0, Math.Max(0, StripWidth - 1)),
+            Math.Clamp(strip.Y, 0, Math.Max(0, StripHeight - 1)));
+
+    private static PigComic.Core.Domain.PixelPoint ToPixel(Point strip)
+        => new((int)Math.Round(strip.X), (int)Math.Round(strip.Y));
 
     protected override void OnPointerWheelChanged(PointerWheelEventArgs e)
     {
@@ -504,6 +691,12 @@ public sealed class TiledImageControl : Control
             return;
         }
 
+        // Full-bounds gray backdrop: the strip tiles draw on top, but areas outside the
+        // strip (when zoomed out) or awaiting decode are opaque gray. This also makes the
+        // whole control hit-testable so placement (Ctrl+B) works on gray areas, not just on
+        // decoded tiles — "click on gray does nothing" was the report.
+        context.FillRectangle(Brushes.Gray, Bounds);
+
         // Viewport in strip coordinates.
         var viewTop = _offsetY / _zoom;
         var viewBottom = (_offsetY + Bounds.Height) / _zoom;
@@ -593,9 +786,27 @@ public sealed class TiledImageControl : Control
     /// <summary>SPEC §14.2 overlay layer: a thick cross per marker (D-50).</summary>
     private void DrawOverlays(DrawingContext context)
     {
+        var drag = _interaction.Drag;
         foreach (var overlay in _overlays)
         {
-            var screen = StripToScreen(overlay.Point);
+            var point = overlay.Point;
+            var parts = overlay.PartPoints;
+            if (drag is not null && drag.BubbleId == overlay.BubbleId)
+            {
+                if (drag.PartIndex is null)
+                {
+                    point = _dragPreviewStrip; // dragging the source marker
+                }
+                else if (parts is not null)
+                {
+                    var pi = drag.PartIndex.Value - 1;
+                    var preview = parts.ToList();
+                    preview[pi] = _dragPreviewStrip;
+                    parts = preview;
+                }
+            }
+
+            var screen = StripToScreen(point);
             if (screen.X < -CrossArmPx || screen.Y < -CrossArmPx ||
                 screen.X > Bounds.Width + CrossArmPx || screen.Y > Bounds.Height + CrossArmPx)
             {
@@ -605,11 +816,13 @@ public sealed class TiledImageControl : Control
             var color = UiPalette.StatusColor(overlay.Status);
             DrawCross(context, screen, color, overlay.IsSelected);
 
-            if (overlay.IsSelected && overlay.PartPoints is { } parts)
+            if (overlay.IsSelected && parts is not null)
             {
-                foreach (var part in parts)
+                // D-18: part 1's marker coincides with the source marker — don't draw it
+                // again (a single-part bubble shows ONE cross, an N-part bubble shows N).
+                for (var i = 1; i < parts.Count; i++)
                 {
-                    DrawCross(context, StripToScreen(part), color, selected: false, arm: CrossArmPx * 0.7, stroke: 1.5);
+                    DrawCross(context, StripToScreen(parts[i]), color, selected: false, arm: CrossArmPx * 0.7, stroke: 1.5);
                 }
             }
         }

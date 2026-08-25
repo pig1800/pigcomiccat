@@ -34,10 +34,23 @@ Work strictly from the task list in `docs/PLAN.md`, one task per session, in ord
 - **Selection plumbing**: `SegmentListViewModel` holds the flat reading-order item list
   (`BubbleRowViewModel`s only — there are no page headers, D-49); `BubbleRowViewModel` wraps the Core `Bubble` and
   owns the `PartViewModel` cells, Draft-on-typing, lock (D-16), source F2-edit. `ConfirmService`
-  implements §14.4 (Enter/Ctrl+Enter/Ctrl+Shift+Enter, empty-target rule, TM upsert with
-  prevHash, `IConfirmQa` = `NullConfirmQa` until M8). `MatchListViewModel` is the §9 box
+  implements §14.4 (Ctrl+Enter/Ctrl+Shift+Enter — plain Enter is a newline in target part
+  editors, D-52 —, empty-target rule, `SkipConfirmed` option backed by a status-bar checkbox
+  persisted in `registry.json`, TM upsert with prevHash, `IConfirmQa` = `NullConfirmQa` until
+  M8). `MatchListViewModel` is the §9 box
   (150 ms debounce, stale discard). Both directions of list↔image sync live in `EditorView`
   code-behind (`RefreshOverlays`, `CenterOn`, `OnOverlayClicked`).
+- **M6 marker interaction (D-54)**: `MarkerInteraction` (hit-test + drag state machine,
+  strip coordinates) inside `TiledImageControl`. Press grabs the nearest marker within
+  12 px/zoom — source markers win ties (part 1 coincides with the source marker by default);
+  the drag renders a local preview (model untouched), release commits `MarkerDragCompleted`
+  → `BubbleMutations.SetMarker/SetPartMarker` + dirty; Esc cancels. Ctrl+B arms placement
+  (Shift-click stays armed) → `PlaceMarkerRequested` → `AddBubble`. Delete = confirm dialog →
+  `DeleteBubble` (never while a part editor has focus). Alt+1/2/3 → `SetPartCount` +
+  `row.RefreshParts()`. The inner parts `ItemsControl` realizes fresh editors after a split
+  that `ContainerPrepared` never sees — `WireEditorsIn` re-wires a row on `Parts.CollectionChanged`
+  (this was a silent dead-Ctrl+Enter bug, D-54e). Smoke drives the interaction seam
+  (`InteractionPointerPressed/Moved/Released`) with strip coordinates — do not break it.
 - **Crash lessons (already cost two sessions — do not regress)**:
   - `TiledImageControl.Install` must read a replaced bitmap's `PixelSize` **before** disposing
     it (Avalonia `Bitmap` throws `ObjectDisposedException` on post-dispose access).
@@ -95,7 +108,8 @@ src/PigComic.App/bin/Debug/net8.0/PigComic.App.exe --smoke
 `PartTextEditorTheme` still applies, that `PART_TextPresenter` is the clause-aware
 `ImeTextPresenter`, that a clause-highlighted preedit lays out, that every window's
 XAML loads, and that the editor opens a real strip-media chapter, renders page 1, syncs
-the selection to page 2 and runs the draft/confirm loop. **Run it after any Avalonia
+the selection to page 2 and runs the draft/confirm loop — including the D-52 key-routing
+split (Enter = newline, Ctrl+Enter = confirm, in both editor modes). **Run it after any Avalonia
 upgrade, theme edit, or XAML change** — this failure class compiles fine and passes
 `dotnet test`, so nothing else catches it. Add a check there whenever you add a window.
 It is deliberately not an xunit test: instantiating Avalonia controls under the xunit

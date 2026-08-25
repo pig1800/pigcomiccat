@@ -2,6 +2,17 @@
 
 **None currently open.**
 
+## Q8 — Should dragging a marker reorder the reading order? — RESOLVED 2026-08-25
+
+The owner wants **drag-to-reorder on the main cross only**: when a bubble's source-marker Y
+crosses a neighbour's, the chapter's reading order is renumbered (D-17) and the segment list
+rebuilds. **Part (sub) markers never affect order** — they influence only PSD export (§27.2).
+Implemented as `BubbleMutations.RenumberByMarkerY(doc)`, called after a source-marker drag
+commit (D-57). Core tests + a smoke check (main-cross drag reorders; part-cross drag doesn't)
+guard it.
+
+**Previously open / resolved:** Q7 (M-TSF scheduling, resolved 2026-08-24) below; Q1–Q6 resolved 2026-08-22/23.
+
 ## Q7 — M-TSF scheduling — RESOLVED 2026-08-24
 
 The modern-flavor IME plan (`docs/IME_MODERN_COMPOSITION.md`, D-43) fixed clause capture over IMM32 first (M2.6/M2.7) and scheduled the full TSF text store (M-TSF, ≈3–5 weeks) after M6, with the caveat that it would jump ahead of M5 if ATOK turned out to deliver no clause data even in-message.

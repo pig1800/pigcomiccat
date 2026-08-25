@@ -58,6 +58,58 @@ public class MutationTests : IDisposable
     }
 
     [Fact]
+    public void SetPartCount_Merge_Skips_Empty_Parts()
+    {
+        // D-56: a blank part must not add a blank line to the merged text. 3 parts with an
+        // empty middle → "一\n三", not "一\n\n三".
+        using var doc = OpenValid();
+        var bubble = doc.Model.Bubbles[0];
+        BubbleMutations.SetPartCount(bubble, 3);
+        BubbleMutations.SetPartText(bubble, 1, "一");
+        BubbleMutations.SetPartText(bubble, 2, "");
+        BubbleMutations.SetPartText(bubble, 3, "三");
+
+        BubbleMutations.SetPartCount(bubble, 1);
+        Assert.Single(bubble.Parts);
+        Assert.Equal("一\n三", bubble.Parts[0].Text);
+    }
+
+    [Fact]
+    public void SetPartCount_3_To_2_Appends_Third_Into_Second_No_Dup()
+    {
+        // D-56: 3→2 keeps part 1, appends part 3's text into part 2. Part 2's text must not
+        // be duplicated. ["一","二","三"] → part1 "一", part2 "二\n三".
+        using var doc = OpenValid();
+        var bubble = doc.Model.Bubbles[0];
+        BubbleMutations.SetPartCount(bubble, 3);
+        BubbleMutations.SetPartText(bubble, 1, "一");
+        BubbleMutations.SetPartText(bubble, 2, "二");
+        BubbleMutations.SetPartText(bubble, 3, "三");
+
+        BubbleMutations.SetPartCount(bubble, 2);
+        Assert.Equal(2, bubble.Parts.Count);
+        Assert.Equal("一", bubble.Parts[0].Text);
+        Assert.Equal("二\n三", bubble.Parts[1].Text);
+    }
+
+    [Fact]
+    public void SetPartCount_3_To_2_Empty_Third_Drops_Silently()
+    {
+        // D-56: 3→2 with an empty part 3 → part 2 unchanged, no trailing newline.
+        using var doc = OpenValid();
+        var bubble = doc.Model.Bubbles[0];
+        BubbleMutations.SetPartCount(bubble, 3);
+        BubbleMutations.SetPartText(bubble, 1, "一");
+        BubbleMutations.SetPartText(bubble, 2, "二");
+        BubbleMutations.SetPartText(bubble, 3, "");
+
+        BubbleMutations.SetPartCount(bubble, 2);
+        Assert.Equal(2, bubble.Parts.Count);
+        Assert.Equal("一", bubble.Parts[0].Text);
+        Assert.Equal("二", bubble.Parts[1].Text);
+    }
+
+    [Fact]
     public void AddBubble_Between_Bubbles_Gets_Order_Between_And_Renumbers()
     {
         using var doc = OpenValid();
@@ -149,6 +201,71 @@ public class MutationTests : IDisposable
         Assert.DoesNotContain(doc.Model.Bubbles, b => b.Id == "b1");
         Assert.Empty(doc.ContentXml.Root!.Element("bubbles")!.Elements("bubble")
             .Where(e => (string?)e.Attribute("id") == "b1"));
+    }
+
+    [Fact]
+    public void SetMarker_Keeps_Part1_In_Sync()
+    {
+        // D-18: part 1's marker mirrors the source. Dragging the source cross must move
+        // part 1 too — otherwise a stale part-1 cross remains at the old spot (the
+        // "drag has no effect / two markers" owner report).
+        using var doc = OpenValid();
+        var bubble = doc.Model.Bubbles[0];
+        BubbleMutations.SetPartCount(bubble, 3);
+        Assert.Equal(bubble.Marker, bubble.Parts[0].Marker);
+
+        var moved = new PixelPoint(222, 333);
+        BubbleMutations.SetMarker(bubble, moved);
+        Assert.Equal(moved, bubble.Marker);
+        Assert.Equal(moved, bubble.Parts[0].Marker);
+        // Parts 2/3 are independent — unchanged.
+        Assert.NotEqual(moved, bubble.Parts[1].Marker);
+        Assert.NotEqual(moved, bubble.Parts[2].Marker);
+    }
+
+    [Fact]
+    public void SetPartMarker_Part1_Keeps_Source_In_Sync()
+    {
+        using var doc = OpenValid();
+        var bubble = doc.Model.Bubbles[0];
+        var moved = new PixelPoint(40, 40);
+        BubbleMutations.SetPartMarker(bubble, 1, moved);
+        Assert.Equal(moved, bubble.Parts[0].Marker);
+        Assert.Equal(moved, bubble.Marker);
+    }
+
+    [Fact]
+    public void RenumberByMarkerY_Reorders_On_Drag_Past_Neighbour()
+    {
+        // Q8 resolved: dragging a bubble's MAIN cross past a neighbour's Y renumbers
+        // the reading order. b1(100) b2(500) b3(900) → drag b1 to Y=600 → b2,b1,b3.
+        using var doc = OpenValid();
+        BubbleMutations.SetMarker(doc.Model.Bubbles[0], new PixelPoint(100, 100));
+        BubbleMutations.SetMarker(doc.Model.Bubbles[1], new PixelPoint(100, 500));
+        BubbleMutations.AddBubble(doc, new PixelPoint(100, 900), out var b3);
+        doc.RefreshModel();
+
+        BubbleMutations.SetMarker(doc.Model.Bubbles[0], new PixelPoint(100, 600));
+        BubbleMutations.RenumberByMarkerY(doc);
+
+        var byOrder = doc.Model.Bubbles.OrderBy(b => b.Order).Select(b => b.Id).ToList();
+        Assert.Equal(["b2", "b1", b3.Id], byOrder);
+        Assert.Equal(1, doc.Model.Bubbles.First(b => b.Id == "b2").Order);
+        Assert.Equal(2, doc.Model.Bubbles.First(b => b.Id == "b1").Order);
+        Assert.Equal(3, doc.Model.Bubbles.First(b => b.Id == b3.Id).Order);
+    }
+
+    [Fact]
+    public void RenumberByMarkerY_Ties_Keep_Prior_Order()
+    {
+        using var doc = OpenValid();
+        BubbleMutations.SetMarker(doc.Model.Bubbles[0], new PixelPoint(100, 500));
+        BubbleMutations.SetMarker(doc.Model.Bubbles[1], new PixelPoint(100, 500));
+        BubbleMutations.RenumberByMarkerY(doc);
+
+        // Equal Y → stable: b1 (order 1) stays before b2 (order 2).
+        Assert.Equal(1, doc.Model.Bubbles.First(b => b.Id == "b1").Order);
+        Assert.Equal(2, doc.Model.Bubbles.First(b => b.Id == "b2").Order);
     }
 
     [Fact]

@@ -17,6 +17,7 @@ namespace PigComic.App.Views;
 public partial class SegmentListView : UserControl
 {
     private readonly HashSet<PartTextEditor> _wired = [];
+    private readonly HashSet<BubbleRowViewModel> _rowWired = [];
     private PartTextEditor? _lastFocusedEditor;
 
     public SegmentListView()
@@ -45,6 +46,23 @@ public partial class SegmentListView : UserControl
 
     private void WireEditorsIn(Visual container, BubbleRowViewModel row, int depth)
     {
+        if (_rowWired.Add(row))
+        {
+            // Parts can change under this row (Alt+1/2/3 split/merge, M6.4): the inner
+            // ItemsControl realizes fresh part editors that the outer ContainerPrepared
+            // never sees, so re-wire after any parts change. The outer ListBoxItem is
+            // keyed to the row and survives; re-find it on the UI thread.
+            row.Parts.CollectionChanged += (_, _) =>
+                Dispatcher.UIThread.Post(() =>
+                {
+                    var c = SegmentList.ContainerFromItem(row) as Visual;
+                    if (c is not null)
+                    {
+                        WireEditorsIn(c, row, 0);
+                    }
+                }, DispatcherPriority.Background);
+        }
+
         foreach (var editor in container.GetVisualDescendants().OfType<PartTextEditor>())
         {
             if (editor.Name == "SourceEditor")
@@ -121,10 +139,9 @@ public partial class SegmentListView : UserControl
             _wired.Add(editor);
         }
 
-        editor.ConfirmRequested += (_, _) => Confirm?.ConfirmAndMove(review: false, skipConfirmed: false);
-        editor.VariantConfirmRequested += (_, variant) => Confirm?.ConfirmAndMove(
-            review: variant == ConfirmVariant.CtrlShiftEnter,
-            skipConfirmed: variant == ConfirmVariant.CtrlEnter);
+        editor.ConfirmRequested += (_, _) => AdvanceOrConfirm(row, editor, review: false);
+        editor.VariantConfirmRequested += (_, variant) =>
+            AdvanceOrConfirm(row, editor, review: variant == ConfirmVariant.CtrlShiftEnter);
         editor.CopySourceRequested += (_, _) =>
         {
             if (editor.DataContext is PartViewModel part)
@@ -138,6 +155,49 @@ public partial class SegmentListView : UserControl
             _lastFocusedEditor = editor;
             SelectRowFor(editor, row);
         };
+        editor.KeyDown += (_, e) =>
+        {
+            if (!PigComic.App.KeyBindings.IsNextPart(e) &&
+                !PigComic.App.KeyBindings.IsPrevPart(e))
+            {
+                return;
+            }
+
+            if (editor.DataContext is not PartViewModel part)
+            {
+                return;
+            }
+
+            var target = e.KeyModifiers.HasFlag(KeyModifiers.Shift) ? part.Index - 1 : part.Index + 1;
+            e.Handled = true;
+            if (target < 1 || target > row.Parts.Count)
+            {
+                // SPEC §14.3: at the last/first part, Tab moves focus nowhere. The spec's
+                // beep is intentionally omitted (System.Windows.Extensions is Windows-only);
+                // the move simply does not happen.
+                return;
+            }
+
+            FocusPartEditor(row, target);
+        };
+    }
+
+    /// <summary>
+    /// D-52 part-walk: a confirm gesture (Ctrl+Enter / Ctrl+Shift+Enter) on a non-last
+    /// part just moves focus to the next part editor within the same bubble — no status
+    /// change, no TM write. Only confirming the LAST part commits the bubble (SPEC §14.4)
+    /// and advances to the next bubble's first part. <see cref="PartViewModel.Index"/> is
+    /// 1-based, so "last" is <c>Index == Parts.Count</c>.
+    /// </summary>
+    private void AdvanceOrConfirm(BubbleRowViewModel row, PartTextEditor editor, bool review)
+    {
+        if (editor.DataContext is PartViewModel part && part.Index < row.Parts.Count)
+        {
+            FocusPartEditor(row, part.Index + 1);
+            return;
+        }
+
+        Confirm?.ConfirmAndMove(review, Confirm?.SkipConfirmed ?? true);
     }
 
     /// <summary>Inserts text at the caret of the focused part editor (TB insert, SPEC §9).</summary>
@@ -156,14 +216,58 @@ public partial class SegmentListView : UserControl
     }
 
     private PartTextEditor? FirstEditorOfSelected()
+        => FindPartEditorOfRow(SegmentList.SelectedItem as BubbleRowViewModel, 1);
+
+    /// <summary>
+    /// Finds the target part editor for a 1-based part index under a row container. The
+    /// inline source editor (x:Name="SourceEditor") is excluded — it is collapsed unless
+    /// F2 source editing is active, and <see cref="GetVisualDescendants"/> returns collapsed
+    /// controls too. Without this filter, focus-after-confirm landed on the hidden source
+    /// editor and the caret stayed in the old bubble.
+    /// </summary>
+    private static PartTextEditor? FindPartEditor(Visual? container, int partIndex1Based)
+        => container?.GetVisualDescendants().OfType<PartTextEditor>()
+            .FirstOrDefault(e => e.Name != "SourceEditor" &&
+                                 e.DataContext is PartViewModel p && p.Index == partIndex1Based);
+
+    /// <summary>Public finder (smoke / future keyboard routing).</summary>
+    public PartTextEditor? FindPartEditorOfRow(BubbleRowViewModel? row, int partIndex1Based)
+        => row is null ? null : FindPartEditor(SegmentList.ContainerFromItem(row) as Visual, partIndex1Based);
+
+    /// <summary>Test/smoke hook: the target editor <see cref="FocusFirstPartOfSelected"/> would focus.</summary>
+    public PartTextEditor? FindFirstTargetEditorOfSelected()
+        => FindPartEditorOfRow(SegmentList.SelectedItem as BubbleRowViewModel, 1);
+
+    /// <summary>The part editor that currently holds focus (TB-insert target, smoke hook).</summary>
+    public PartTextEditor? LastFocusedEditor => _lastFocusedEditor;
+
+    /// <summary>Focuses a specific part editor within a row (D-52 part-walk).</summary>
+    public void FocusPartEditor(BubbleRowViewModel row, int partIndex1Based)
     {
-        if (SegmentList.SelectedItem is not BubbleRowViewModel row)
+        var editor = FindPartEditorOfRow(row, partIndex1Based);
+        if (editor is not null)
         {
-            return null;
+            FocusEditor(editor);
+            return;
         }
 
-        var container = SegmentList.ContainerFromItem(row) as Visual;
-        return container?.GetVisualDescendants().OfType<PartTextEditor>().FirstOrDefault();
+        // The inner ItemsControl may not have realized the container yet — retry once.
+        Dispatcher.UIThread.Post(() =>
+        {
+            var e = FindPartEditorOfRow(row, partIndex1Based);
+            if (e is not null)
+            {
+                FocusEditor(e);
+            }
+        }, DispatcherPriority.Background);
+    }
+
+    private void FocusEditor(PartTextEditor editor)
+    {
+        // Set the TB-insert target synchronously; Focus()/GotFocus may be asynchronous in
+        // headless hosts, and the part-walk's contract is "focus moved to this editor".
+        _lastFocusedEditor = editor;
+        editor.FocusAndSelectAll();
     }
 
     private void SelectRowFor(PartTextEditor editor, BubbleRowViewModel row)
@@ -177,7 +281,10 @@ public partial class SegmentListView : UserControl
     /// <summary>
     /// After a confirm the selection moves; scrolls the new row into view and
     /// focuses its first part editor (SPEC §14.4: "move selection to the next
-    /// bubble and focus its first part editor").
+    /// bubble and focus its first part editor"). The parts <c>ItemsControl</c>
+    /// realizes its containers asynchronously, so the target editor may not be in
+    /// the visual tree on the first frame after <c>ScrollIntoView</c> — retry a
+    /// few times before giving up.
     /// </summary>
     public void FocusFirstPartOfSelected()
     {
@@ -187,17 +294,29 @@ public partial class SegmentListView : UserControl
         }
 
         SegmentList.ScrollIntoView(SegmentList.SelectedItem);
+        TryFocusTargetEditor(0);
+    }
+
+    private void TryFocusTargetEditor(int attempt)
+    {
         Dispatcher.UIThread.Post(() =>
         {
-            var row = SegmentList.SelectedItem as BubbleRowViewModel;
-            if (row is null)
+            if (SegmentList.SelectedItem is not BubbleRowViewModel row)
             {
                 return;
             }
 
-            var container = SegmentList.ContainerFromItem(row) as Visual;
-            var editor = container?.GetVisualDescendants().OfType<PartTextEditor>().FirstOrDefault();
-            editor?.FocusAndSelectAll();
+            var editor = FindPartEditor(SegmentList.ContainerFromItem(row) as Visual, 1);
+            if (editor is not null)
+            {
+                FocusEditor(editor);
+                return;
+            }
+
+            if (attempt < 5)
+            {
+                TryFocusTargetEditor(attempt + 1);
+            }
         }, DispatcherPriority.Background);
     }
 

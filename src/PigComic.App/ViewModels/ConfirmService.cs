@@ -22,10 +22,13 @@ public sealed class NullConfirmQa : IConfirmQa
 }
 
 /// <summary>
-/// M5.4 confirm loop (SPEC §14.4): Enter/Ctrl+Enter/Ctrl+Shift+Enter, empty-target
-/// rule, TM upsert with context (prevHash from the previous bubble in reading
-/// order), move-next semantics, lock/unlock (D-16). TM writes happen only on
-/// confirm, never while typing.
+/// M5.4 confirm loop (SPEC §14.4): Ctrl+Enter/Ctrl+Shift+Enter (plain Enter is a
+/// newline in target part editors — D-52), empty-target rule, TM upsert with
+/// context (prevHash from the previous bubble in reading order), move-next
+/// semantics, lock/unlock (D-16). TM writes happen only on confirm, never while
+/// typing. <see cref="SkipConfirmed"/> backs the "Skip confirmed" status-bar
+/// checkbox (owner directive 2026-08-25, D-52; persisted in registry.json until
+/// it moves into the settings window with M8.6).
 /// </summary>
 public sealed class ConfirmService
 {
@@ -40,6 +43,13 @@ public sealed class ConfirmService
     /// <summary>Raised after the selection moved (editor focuses the next part editor).</summary>
     public event Action? SelectionMoved;
 
+    /// <summary>
+    /// When true (default), advancing after a confirm lands on the next bubble whose
+    /// status is Untranslated or Draft. When false, it lands on the literal next bubble
+    /// in reading order. Locked bubbles are always skipped either way.
+    /// </summary>
+    public bool SkipConfirmed { get; set; } = true;
+
     public ConfirmService(ChapterSession session, SegmentListViewModel segments, TmStore? tm = null, IConfirmQa? qa = null)
     {
         _session = session;
@@ -50,8 +60,8 @@ public sealed class ConfirmService
 
     /// <summary>
     /// Confirm the selected bubble and move on. <paramref name="review"/> (Ctrl+Shift+Enter)
-    /// confirms as Reviewed; <paramref name="skipConfirmed"/> (Ctrl+Enter) moves to the next
-    /// Untranslated/Draft bubble.
+    /// confirms as Reviewed; plain confirm is Ctrl+Enter (D-52). The advance honors
+    /// <see cref="SkipConfirmed"/> (Locked bubbles are always skipped).
     /// </summary>
     public void ConfirmAndMove(bool review, bool skipConfirmed)
     {

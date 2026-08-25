@@ -41,6 +41,14 @@ public partial class EditorViewModel : ObservableObject
     [ObservableProperty]
     private bool _isReadOnly;
 
+    /// <summary>
+    /// D-52: when set, advancing after a confirm skips bubbles already Translated/Reviewed
+    /// (Locked are always skipped). Status-bar checkbox for now; moves to the settings
+    /// window in M8.6. Persisted in registry.json (editorLayout).
+    /// </summary>
+    [ObservableProperty]
+    private bool _skipConfirmed = true;
+
     /// <summary>The segment list widget (null until a chapter is attached).</summary>
     public SegmentListViewModel? Segments { get; private set; }
 
@@ -59,13 +67,24 @@ public partial class EditorViewModel : ObservableObject
         CountsLabel = $"{model.Bubbles.Count} bubbles · {model.Images.Count} images";
         SelectionLabel = "—";
         IsReadOnly = session.Document.IsReadOnly;
-
         var segments = new SegmentListViewModel(session);
         segments.SelectionChanged += OnBubbleSelectionChanged;
         Segments = segments;
 
         UpdatePageLabel();
         UpdateSaveState();
+    }
+
+    /// <summary>Recomputes the status-bar counts field (bubble create/delete, M6).</summary>
+    public void RefreshCounts()
+    {
+        if (_session is null)
+        {
+            return;
+        }
+
+        var model = _session.Document.Model;
+        CountsLabel = $"{model.Bubbles.Count} bubbles · {model.Images.Count} images";
     }
 
     /// <summary>Refreshes the strip-position label (called by the view as it scrolls).</summary>

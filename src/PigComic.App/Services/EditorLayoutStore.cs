@@ -18,31 +18,32 @@ public static class EditorLayoutStore
     public static int DefaultImageWidth => 420;
     public static int DefaultFunctionWidth => 340;
 
-    /// <summary>Gets the persisted widths (pixels), clamped to sane bounds.</summary>
-    public static (int ImageWidth, int FunctionWidth) Load()
+    /// <summary>Gets the persisted widths (pixels) and the skip-confirmed option (D-52), clamped to sane bounds.</summary>
+    public static (int ImageWidth, int FunctionWidth, bool SkipConfirmed) Load()
     {
         try
         {
             var path = RegistryPath();
             if (!File.Exists(path))
             {
-                return (DefaultImageWidth, DefaultFunctionWidth);
+                return (DefaultImageWidth, DefaultFunctionWidth, true);
             }
 
             var root = JsonNode.Parse(File.ReadAllText(path)) as JsonObject;
             var layout = root?[LayoutKey] as JsonObject;
             return (
                 Clamp(ReadInt(layout, "imageWidth") ?? DefaultImageWidth, 160, 2400),
-                Clamp(ReadInt(layout, "functionWidth") ?? DefaultFunctionWidth, 160, 1200));
+                Clamp(ReadInt(layout, "functionWidth") ?? DefaultFunctionWidth, 160, 1200),
+                layout?["skipConfirmed"]?.GetValue<bool>() ?? true);
         }
         catch
         {
-            return (DefaultImageWidth, DefaultFunctionWidth);
+            return (DefaultImageWidth, DefaultFunctionWidth, true);
         }
     }
 
     /// <summary>Merges into registry.json preserving every existing key.</summary>
-    public static void Save(int imageWidth, int functionWidth)
+    public static void Save(int imageWidth, int functionWidth, bool skipConfirmed)
     {
         try
         {
@@ -54,6 +55,7 @@ public static class EditorLayoutStore
             {
                 ["imageWidth"] = Clamp(imageWidth, 80, 2400),
                 ["functionWidth"] = Clamp(functionWidth, 160, 1200),
+                ["skipConfirmed"] = skipConfirmed,
             };
 
             var dir = Path.GetDirectoryName(path);

@@ -27,6 +27,7 @@ public partial class EditorView : Window
     private bool _closed;
     private TmStore? _tm;
     private TbStore? _tb;
+    private string? _storeError;
     private ConfirmService? _confirm;
     private MatchListViewModel? _matches;
     private AutosaveTimer? _autosave;
@@ -38,28 +39,54 @@ public partial class EditorView : Window
         _pcmlPath = pcmlPath;
         _projectFolder = projectFolder;
         _vm = new EditorViewModel();
-        DataContext = _vm;
-        Closed += OnClosed;
         ApplyStoredLayout();
+        DataContext = _vm;
+        _vm.PropertyChanged += OnVmPropertyChanged;
+        Closed += OnClosed;
         ImagePane.OverlayClicked += OnOverlayClicked;
         ImagePane.ScrollRequested += OnScrollRequested;
         ImagePane.StripPositionChanged += y => _vm.SetStripPosition(y);
+        ImagePane.PlaceMarkerRequested += OnPlaceMarkerRequested;
+        ImagePane.MarkerDragCompleted += OnMarkerDragCompleted;
         _ = LoadAsync();
     }
 
-    /// <summary>Spec §14.1: splitter widths persist in registry.json.</summary>
+    /// <summary>Spec §14.1: splitter widths persist in registry.json (D-52 adds the skip-confirmed option).</summary>
     private void ApplyStoredLayout()
     {
-        var (imageWidth, functionWidth) = EditorLayoutStore.Load();
+        var (imageWidth, functionWidth, skipConfirmed) = EditorLayoutStore.Load();
         PaneGrid.ColumnDefinitions[0].Width = new GridLength(imageWidth);
         PaneGrid.ColumnDefinitions[4].Width = new GridLength(functionWidth);
+        _vm.SkipConfirmed = skipConfirmed;
     }
 
     private void OnSplitterDragCompleted(object? sender, VectorEventArgs e)
     {
+        PersistLayout();
+    }
+
+    private void PersistLayout()
+    {
         var image = (int)PaneGrid.ColumnDefinitions[0].Width.Value;
         var function = (int)PaneGrid.ColumnDefinitions[4].Width.Value;
-        EditorLayoutStore.Save(image, function);
+        EditorLayoutStore.Save(image, function, _vm.SkipConfirmed);
+    }
+
+    /// <summary>
+    /// Keeps the skip-confirmed checkbox (D-52) and the confirm service in sync and
+    /// persists the option — same best-effort path as the splitter widths.
+    /// </summary>
+    private void OnVmPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(EditorViewModel.SkipConfirmed))
+        {
+            if (_confirm is not null)
+            {
+                _confirm.SkipConfirmed = _vm.SkipConfirmed;
+            }
+
+            PersistLayout();
+        }
     }
 
     private async Task LoadAsync()
@@ -100,12 +127,18 @@ public partial class EditorView : Window
             }
 
             OpenStores(session);
-            _confirm = new ConfirmService(session, _vm.Segments!, _tm);
+            _confirm = new ConfirmService(session, _vm.Segments!, _tm)
+            {
+                SkipConfirmed = _vm.SkipConfirmed,
+            };
             _confirm.SelectionMoved += OnSelectionMoved;
             _confirm.BubblesChanged += OnBubblesChanged;
             SegmentList.Confirm = _confirm;
 
-            _matches = new MatchListViewModel(session, _vm.Segments!, _tm, _tb);
+            _matches = new MatchListViewModel(session, _vm.Segments!, _tm, _tb)
+            {
+                StoreError = _storeError,
+            };
             _matches.TbInsertRequested += OnTbInsertRequested;
             _matches.BubblesChanged += OnBubblesChanged;
             FunctionPane.DataContext = _matches;
@@ -228,6 +261,123 @@ public partial class EditorView : Window
     private void OnOverlayClicked(string bubbleId)
         => _vm.Segments?.SelectBubbleId(bubbleId);
 
+    /// <summary>Marker drag committed on mouse-up (SPEC §15.1): apply the Core mutation.</summary>
+    private void OnMarkerDragCompleted(string bubbleId, int? partIndex, PigComic.Core.Domain.PixelPoint point)
+    {
+        if (_session is null)
+        {
+            return;
+        }
+
+        var bubble = _session.Document.Model.Bubbles.FirstOrDefault(b => b.Id == bubbleId);
+        if (bubble is null)
+        {
+            return;
+        }
+
+        if (partIndex is { } pi)
+        {
+            // Sub cross (part marker): moves only that part — never reorders (PSD-only).
+            BubbleMutations.SetPartMarker(bubble, pi, point);
+            _session.MarkDirty();
+            RefreshOverlays();
+            return;
+        }
+
+        // Main cross (source marker): move + renumber reading order by Y (Q8 resolved —
+        // the owner wants drag-to-reorder on the main cross; sub crosses don't count).
+        BubbleMutations.SetMarker(bubble, point);
+        BubbleMutations.RenumberByMarkerY(_session.Document);
+        _session.MarkDirty();
+        _vm.Segments?.Rebuild();
+        _vm.Segments?.SelectBubbleId(bubbleId); // keep selection on the dragged bubble
+        RefreshOverlays();
+    }
+
+    /// <summary>Placement-mode click: create the bubble (SPEC §15.2) and select it.</summary>
+    private void OnPlaceMarkerRequested(PigComic.Core.Domain.PixelPoint point)
+    {
+        if (_session is null)
+        {
+            return;
+        }
+
+        BubbleMutations.AddBubble(_session.Document, point, out var created);
+        _session.MarkDirty();
+        _vm.Segments?.Rebuild();
+        _vm.RefreshCounts();
+        _vm.Segments?.SelectBubbleId(created.Id);
+        RefreshOverlays();
+        OnSelectionMoved();
+    }
+
+    /// <summary>Alt+1/2/3: set the selected bubble's target part count (SPEC §15.3).</summary>
+    internal void ApplyPartCount(int count)
+    {
+        if (_session is null || _vm.Segments?.SelectedBubble is not { } row)
+        {
+            return;
+        }
+
+        BubbleMutations.SetPartCount(row.Bubble, count);
+        row.RefreshParts();
+        _session.MarkDirty();
+        RefreshOverlays();
+    }
+
+    /// <summary>Deletes the selected bubble after the confirm dialog (SPEC §15.2).</summary>
+    private async Task DeleteSelectedBubbleAsync()
+    {
+        if (_session is null || _vm.Segments?.SelectedBubble is not { } row)
+        {
+            return;
+        }
+
+        var source = row.Bubble.SourceText;
+        var preview = string.IsNullOrWhiteSpace(source) ? "(empty source)" : source;
+        var ok = await ContentDialog.AskAsync(this, "Delete bubble",
+            $"Delete bubble {row.Id}?\n\nSource: {preview}", "Delete", "Cancel");
+        if (ok)
+        {
+            ApplyDeleteSelected(row);
+        }
+    }
+
+    /// <summary>Applies the delete mutation and refreshes list/overlays (smoke path skips the dialog).</summary>
+    internal void ApplyDeleteSelected(BubbleRowViewModel row)
+    {
+        if (_session is null)
+        {
+            return;
+        }
+
+        // Remember a neighbour id so the selection lands on something after Rebuild.
+        var items = _vm.Segments?.Items ?? [];
+        var index = items.IndexOf(row);
+        string? nextId = null;
+        for (var i = index + 1; i < items.Count; i++)
+        {
+            if (items[i] is BubbleRowViewModel r)
+            {
+                nextId = r.Id;
+                break;
+            }
+        }
+
+        nextId ??= items.Take(index).OfType<BubbleRowViewModel>().LastOrDefault()?.Id;
+
+        BubbleMutations.DeleteBubble(_session.Document, row.Bubble);
+        _session.MarkDirty();
+        _vm.Segments?.Rebuild();
+        _vm.RefreshCounts();
+        if (nextId is not null)
+        {
+            _vm.Segments?.SelectBubbleId(nextId);
+        }
+
+        RefreshOverlays();
+    }
+
     private void OnScrollRequested(int delta) => ImagePane.ScrollByViewports(delta);
 
     /// <summary>Opens the project's TM/TB stores when a project folder is known (SPEC §7/§8).</summary>
@@ -243,11 +393,16 @@ public partial class EditorView : Window
         {
             _tm = new TmStore(Path.Combine(_projectFolder, "tm.db"), m.SourceLanguage, m.TargetLanguage);
             _tb = new TbStore(Path.Combine(_projectFolder, "tb.db"), m.SourceLanguage, m.TargetLanguage);
+            _storeError = null;
         }
         catch (Exception ex)
         {
             // A missing/mismatched store disables TM/TB features but never blocks editing.
+            // The reason is surfaced in the match box so "TM isn't working" is explainable
+            // (e.g. a stale tm.db from before the D-51 language-pair flip) instead of
+            // looking like a perpetually empty result set.
             System.Diagnostics.Debug.WriteLine($"Stores unavailable: {ex.Message}");
+            _storeError = ex.Message;
             _tm?.Dispose();
             _tm = null;
             _tb?.Dispose();
@@ -292,7 +447,33 @@ public partial class EditorView : Window
             _matches?.Insert(n);
             e.Handled = true;
         }
+        else if (PigComic.App.KeyBindings.IsPlaceMarker(e))
+        {
+            // SPEC §15.2: Ctrl+B arms/disarms placement mode; Esc also disarms.
+            ImagePane.PlacementArmed = !ImagePane.PlacementArmed;
+            e.Handled = true;
+        }
+        else if (PigComic.App.KeyBindings.IsDeleteBubble(e) && !IsEditorTextFocused())
+        {
+            // SPEC §15.2: Delete removes the selected bubble (not while a part editor has
+            // focus — there Delete is ordinary text deletion).
+            e.Handled = true;
+            _ = DeleteSelectedBubbleAsync();
+        }
+        else if (PigComic.App.KeyBindings.SetPartCount(e) is { } count)
+        {
+            ApplyPartCount(count);
+            e.Handled = true;
+        }
+        else if (e.Key == Key.Escape && ImagePane.CancelInteraction())
+        {
+            e.Handled = true;
+        }
     }
+
+    /// <summary>True when keyboard focus is inside a part/source editor (Delete must stay text deletion).</summary>
+    private bool IsEditorTextFocused()
+        => TopLevel.GetTopLevel(this)?.FocusManager?.GetFocusedElement() is PartTextEditor;
 
     /// <summary>Ctrl+S manual save (SPEC §14.6).</summary>
     private async Task SaveNowAsync()

@@ -100,15 +100,33 @@ public static class BubbleMutations
 
         if (count < before)
         {
-            // Merge: join all texts into part 1, reset its marker to the source marker.
-            var joined = string.Join("\n", bubble.Parts.Select(p => p.Text));
-            bubble.Parts[0].Text = joined;
-            bubble.Parts[0].Marker = bubble.Marker;
+            // Merge down to `count` parts (SPEC §15.3). Parts 1..count are kept; the texts
+            // of parts count+1..end are appended into part `count` with "\n", skipping
+            // empties (a blank part never adds a blank line — owner directive 2026-08-25,
+            // D-56). Part `count`'s marker is untouched (owner-adjustable); only the
+            // to-1 case resets part 1 to the source marker (D-18).
+            //   3→1: join ["一","二","三"] → "一\n二\n三" (empties skipped).
+            //   3→2: keep part 1 "一"; append part 3 into part 2 → "二\n三". No duplication.
+            var toMerge = bubble.Parts.Skip(count).Select(p => p.Text)
+                .Where(t => !string.IsNullOrEmpty(t)).ToList();
+            if (toMerge.Count > 0)
+            {
+                var keep = bubble.Parts[count - 1];
+                var existing = keep.Text;
+                var joined = string.IsNullOrEmpty(existing)
+                    ? string.Join("\n", toMerge)
+                    : existing + "\n" + string.Join("\n", toMerge);
+                keep.Text = joined;
+            }
+
+            if (count == 1)
+            {
+                bubble.Parts[0].Marker = bubble.Marker;
+            }
+
             while (bubble.Parts.Count > count)
             {
-                var index = bubble.Parts.Count;
-                bubble.PartsList[index - 1].Text = ""; // not needed; remove below
-                RemovePartAt(bubble, index);
+                RemovePartAt(bubble, bubble.Parts.Count);
             }
         }
         else
@@ -181,7 +199,38 @@ public static class BubbleMutations
     {
         var before = bubble.Marker;
         bubble.Marker = marker;
+        // D-18: part 1's marker always mirrors the source marker. Keep them in sync so
+        // dragging the source cross doesn't leave a stale part-1 cross at the old spot
+        // (and PSD export / part-marker reads stay consistent).
+        if (bubble.Parts.Count > 0 && bubble.Parts[0].Marker != marker)
+        {
+            bubble.Parts[0].Marker = marker;
+        }
         return new MutationRecord("SetMarker", J(new { id = bubble.Id, before = MarkerToString(before) }));
+    }
+
+    /// <summary>
+    /// Renumbers every bubble's Order by its (source) marker Y, ascending (D-17, D-36):
+    /// ties keep their prior relative order (stable sort by current index). Called after a
+    /// source-marker drag moves a bubble past a neighbour (owner directive 2026-08-25,
+    /// Q8 resolved). Part markers are IGNORED — only the main cross drives reading order;
+    /// sub crosses affect only PSD export (§27.2). Refreshes the model so the in-memory
+    /// bubble list is re-sorted by the new orders.
+    /// </summary>
+    public static void RenumberByMarkerY(PcmlDocument doc)
+    {
+        var bubbles = doc.Model.Bubbles;
+        var ordered = bubbles
+            .Select((b, i) => (b, i))
+            .OrderBy(x => x.b.Marker.Y)
+            .ThenBy(x => x.i) // stable: equal Y keeps the prior relative order
+            .ToList();
+        for (var n = 0; n < ordered.Count; n++)
+        {
+            ordered[n].b.Order = n + 1;
+        }
+
+        doc.RefreshModel();
     }
 
     public static MutationRecord SetPartMarker(Bubble bubble, int partIndex, PixelPoint marker)
@@ -189,6 +238,11 @@ public static class BubbleMutations
         var part = PartOrThrow(bubble, partIndex);
         var before = part.Marker;
         part.Marker = marker;
+        // D-18 mirror: moving part 1 moves the source marker too (they coincide).
+        if (partIndex == 1 && bubble.Marker != marker)
+        {
+            bubble.Marker = marker;
+        }
         return new MutationRecord("SetPartMarker", J(new { id = bubble.Id, index = partIndex, before = MarkerToString(before) }));
     }
 

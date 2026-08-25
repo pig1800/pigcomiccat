@@ -21,6 +21,13 @@ public partial class MatchListViewModel : ObservableObject
     private readonly MatchListService? _service;
     private CancellationTokenSource? _cts;
 
+    /// <summary>
+    /// When the TM/TB stores could not be opened (language-pair mismatch, corrupt file,
+    /// locked, …), the reason is shown here instead of the silent "No matches" that a
+    /// null service otherwise produces. Set by the editor after <c>OpenStores</c>.
+    /// </summary>
+    public string? StoreError { get; set; }
+
     public ObservableCollection<MatchRowViewModel> Rows { get; } = [];
 
     [ObservableProperty]
@@ -49,10 +56,21 @@ public partial class MatchListViewModel : ObservableObject
         _cts?.Cancel();
         var cts = _cts = new CancellationTokenSource();
         var row = _segments.SelectedBubble;
-        if (row is null || _service is null)
+        if (row is null)
         {
             StatusText = "";
             Rows.Clear();
+            return;
+        }
+
+        if (_service is null)
+        {
+            // Surfaces the real reason (e.g. a language-pair mismatch after the D-51
+            // default flip) instead of looking like an empty result set.
+            Rows.Clear();
+            StatusText = StoreError is not null
+                ? $"TM/TB unavailable — {StoreError}"
+                : "TM/TB not opened (open via a project folder).";
             return;
         }
 

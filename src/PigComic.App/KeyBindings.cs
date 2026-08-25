@@ -8,7 +8,8 @@ namespace PigComic.App;
 /// </summary>
 public static class KeyBindings
 {
-    public static bool IsConfirmNextUnconfirmed(KeyEventArgs e)
+    /// <summary>Ctrl+Enter: confirm as Translated and advance (D-52 — plain Enter is a newline in part editors).</summary>
+    public static bool IsConfirm(KeyEventArgs e)
         => e.Key is Key.Enter or Key.Return &&
            e.KeyModifiers.HasFlag(KeyModifiers.Control) &&
            !e.KeyModifiers.HasFlag(KeyModifiers.Shift);
@@ -37,6 +38,40 @@ public static class KeyBindings
 
     public static bool IsNextBubble(KeyEventArgs e)
         => e.Key == Key.Down && e.KeyModifiers.HasFlag(KeyModifiers.Control);
+
+    /// <summary>Ctrl+B: arm place-new-bubble mode (SPEC §15.2).</summary>
+    public static bool IsPlaceMarker(KeyEventArgs e)
+        => e.Key == Key.B && e.KeyModifiers == KeyModifiers.Control;
+
+    /// <summary>Delete (no modifiers): delete the selected bubble (SPEC §14.6).</summary>
+    public static bool IsDeleteBubble(KeyEventArgs e)
+        => e.Key == Key.Delete && e.KeyModifiers == KeyModifiers.None;
+
+    /// <summary>Alt+1/2/3 → target part count (SPEC §15.3), or null.</summary>
+    public static int? SetPartCount(KeyEventArgs e)
+    {
+        if (!e.KeyModifiers.HasFlag(KeyModifiers.Alt) ||
+            e.KeyModifiers.HasFlag(KeyModifiers.Control))
+        {
+            return null;
+        }
+
+        return e.Key switch
+        {
+            Key.D1 or Key.NumPad1 => 1,
+            Key.D2 or Key.NumPad2 => 2,
+            Key.D3 or Key.NumPad3 => 3,
+            _ => null,
+        };
+    }
+
+    /// <summary>Tab: next part (SPEC §14.3/§15.3).</summary>
+    public static bool IsNextPart(KeyEventArgs e)
+        => e.Key == Key.Tab && e.KeyModifiers == KeyModifiers.None;
+
+    /// <summary>Shift+Tab: previous part.</summary>
+    public static bool IsPrevPart(KeyEventArgs e)
+        => e.Key == Key.Tab && e.KeyModifiers == KeyModifiers.Shift;
 
     /// <summary>Ctrl+1..Ctrl+9 → result number (or null).</summary>
     public static int? NthMatch(KeyEventArgs e)

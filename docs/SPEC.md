@@ -703,18 +703,19 @@ Three vertical areas, left→right, with draggable splitters (widths persisted i
 Virtualized list, one row per bubble, in chapter-global reading order (`Order` ascending). There are no page group headers — the chapter is one continuous strip (D-49). Two columns:
 
 - **Source column** (read-mostly): first line shows `kind` glyph + character name (if set) in small text; below, the source text. `F2` (or double-click on the text) opens inline source-text editing (OCR fixes) — Enter commits, Esc cancels; source edits set no status change but mark dirty. Marker create/delete/move is driven from this column's selection interacting with the image pane (§15).
-- **Target column** (editable): the bubble's parts stacked vertically; each part is a text editor, text **center-aligned** (comic convention). Part editors: Enter = confirm bubble (§14.4); Shift+Enter = line break in the part; Tab/Shift+Tab = next/previous part (at the last/first part, Tab moves focus nowhere — beep). Row height grows with content.
+- **Target column** (editable): the bubble's parts stacked vertically; each part is a text editor, text **center-aligned** (comic convention). Part editors: Enter = line break in the part (D-52); Ctrl+Enter = confirm bubble (§14.4); Tab/Shift+Tab = next/previous part (at the last/first part, Tab moves focus nowhere — beep). Row height grows with content.
 
 Row background reflects status color at low opacity. Locked bubbles: target read-only.
 
 ### 14.4 Confirm loop and statuses
 
 - Typing in a target of an `Untranslated` bubble sets `Draft` immediately.
-- **Enter** (target focused): run ⚡ QA rules on this bubble (issues shown as inline markers; Errors do NOT block confirm — D-15), set status `Translated`, write TM (§7.1; skipped if target empty — Enter on an empty target just moves on without status change), move selection to the **next bubble** and focus its first part editor.
-- **Ctrl+Enter**: same, but move to the next bubble whose status is `Untranslated` or `Draft` (skips confirmed and Locked).
-- **Ctrl+Shift+Enter**: confirm as `Reviewed` (also writes TM), move next.
+- **Enter** (target focused): insert a line break in the part (D-52 — multi-line comic targets are typed, not confirmed, with Enter).
+- **Ctrl+Enter** (target focused): if the focused part is **not the last part** of the bubble, move focus to the next part editor within the same bubble — no status change, no TM write (the part-walk, D-52). If it is the last part: run ⚡ QA rules on this bubble (issues shown as inline markers; Errors do NOT block confirm — D-15), set status `Translated`, write TM (§7.1; skipped if target empty — Ctrl+Enter on an empty target just moves on without status change), move selection to the **next available bubble** and focus its first part editor.
+- **Ctrl+Shift+Enter**: same part-walk; confirming the last part confirms as `Reviewed` (also writes TM), advance next.
 - **Ctrl+L**: toggle `Locked` (from any status; unlocking restores `Translated` if target non-empty, else `Untranslated` — D-16).
 - Re-confirming a `Translated`/`Reviewed` bubble re-writes (upserts) the TM entry.
+- **"Next available bubble"** (owner directive 2026-08-25, D-52): the next bubble in reading order that can take input — `Locked` bubbles are always skipped; when the **Skip confirmed** option is on (a status-bar checkbox for now — easy access; it moves into the settings window in M8.6), bubbles already `Translated`/`Reviewed` are skipped too. The option persists in `registry.json` (§6.4).
 
 ### 14.5 Function pane (context of the selected bubble)
 
@@ -730,10 +731,10 @@ Top to bottom:
 
 | Shortcut | Context | Action |
 |---|---|---|
-| `Enter` | target editor | Confirm as Translated, next bubble (§14.4) |
-| `Ctrl+Enter` | target editor | Confirm, next Untranslated/Draft |
-| `Ctrl+Shift+Enter` | target editor | Confirm as Reviewed, next |
-| `Shift+Enter` | target editor | Insert line break |
+| `Enter` | target editor | Insert line break (D-52) |
+| `Ctrl+Enter` | target editor | Confirm as Translated, next available bubble (§14.4) |
+| `Ctrl+Shift+Enter` | target editor | Confirm as Reviewed, next available |
+| `Tab` / `Shift+Tab` | target editor | Next / previous part |
 | `Ctrl+Up` / `Ctrl+Down` | editor | Previous / next bubble (no confirm) |
 | `Tab` / `Shift+Tab` | target editor | Next / previous part |
 | `Ctrl+Insert` | editor | Copy source (Trados): replace the focused part's entire text with the bubble's source text |
@@ -782,6 +783,13 @@ to adjust. The move commits on mouse-up as one undo step, clamped to the strip o
 (`0 ≤ x < StripWidth`, `0 ≤ y < StripHeight`). Both source and target-part markers move this
 way; the source side always has exactly one marker.
 
+**Reading order follows the main cross (owner directive 2026-08-25, Q8 resolved, D-57).**
+When a bubble's **source marker** is dragged so its Y crosses a neighbour's source-marker Y,
+the reading order is renumbered across the chapter (D-17: order by marker Y ascending, ties
+keep prior relative order) and the segment list rebuilds. **Part markers never affect order** —
+they influence only PSD export (§27.2). So dragging a sub cross moves only that part's anchor;
+the list stays put.
+
 ### 15.2 Create / delete
 
 - **Create**: `Ctrl+B` or the toolbar button arms placement mode (crosshair cursor); **one click**
@@ -795,11 +803,10 @@ way; the source side always has exactly one marker.
 
 ### 15.3 Target split
 
-- `Alt+2`/`Alt+3` set part count 2/3; `Alt+1` merges back. Max 3 enforced.
+- `Alt+2`/`Alt+3` set part count 2/3; `Alt+1` merges back to 1. Max 3 enforced. Merging down to N (3→2 or 3→1) keeps parts 1..N as they are and appends the non-empty texts of parts N+1..end into part N with `\n`; empty parts contribute nothing (no blank lines, D-56). Only the to-1 case resets part 1's marker to the source marker.
 - On increasing count: existing text stays in part 1; new parts empty. Default part markers:
   part 1 at the source marker, each later part offset **48 px further down** in strip
   coordinates (D-18) so the crosses never land on top of one another; owner-adjustable by drag.
-- On merging to 1: texts joined with `\n` into part 1; part 1's marker resets to the source marker.
 - Part markers are movable in the image pane whenever their bubble is selected.
 - The TM unit remains the whole bubble; marker positions never affect TM content.
 
@@ -957,7 +964,7 @@ thin/thick-underline flavor (memoQ, VSCode):
 ## 23. Journal and crash recovery
 
 - File: `<file>.pcml.journal`, UTF-8 JSONL, sibling of the package.
-- **Confirm-only granularity** (owner directive, D-34 — the program must stay light with no per-keystroke I/O): exactly one line is appended, flushed to disk (`FileStream.Flush(flushToDisk: true)`), per **confirm action** (Enter / Ctrl+Enter / Ctrl+Shift+Enter, §14.4), written before the TM upsert. Nothing else journals. Consequence, accepted: a crash loses at most unconfirmed work since the last save/autosave (drafts, marker moves, notes) — never a confirmed segment.
+- **Confirm-only granularity** (owner directive, D-34 — the program must stay light with no per-keystroke I/O): exactly one line is appended, flushed to disk (`FileStream.Flush(flushToDisk: true)`), per **confirm action** (Ctrl+Enter / Ctrl+Shift+Enter, §14.4 — D-52 moved Enter off the confirm path), written before the TM upsert. Nothing else journals. Consequence, accepted: a crash loses at most unconfirmed work since the last save/autosave (drafts, marker moves, notes) — never a confirmed segment.
 - Line shape — a **full bubble snapshot**, sufficient to recreate the bubble from nothing:
   ```json
   {"seq":1,"utc":"2026-08-25T10:00:00Z","op":"confirm","bubble":{"id":"b0001","order":1,

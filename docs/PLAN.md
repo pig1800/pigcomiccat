@@ -2,11 +2,13 @@
 
 ## STATUS — READ THIS BEFORE ANYTHING ELSE (2026-08-25)
 
-**M5.1–M5.6 CODE DONE 2026-08-24/25** (editor shell, segment list, overlays + sync, confirm
-loop, TM/TB box, keys/save/autosave). M5.1 acceptance PASSED; the M5.2–M5.6 acceptances are
-**manual — batch owner test** (see the per-task notes; IME items need a real IME session).
-**Next task: M6** once the owner clears the M5.2–M5.6 batch. The M2.5 IME gate passed on
-2026-08-24 (6/6, owner-run), so M5–M11 are open. Do not go past the first task below that
+**M5.1–M5.6 and M6.1–M6.4 CODE DONE 2026-08-24/25.** M5.1 acceptance PASSED; the M5.2–M5.6
+batch and the M6.1–M6.4 acceptances are **manual — owner batch test** (see the per-task
+notes; IME items need a real IME session). During 2026-08-25 testing the owner surfaced
+three defects, all fixed with regression guards (D-52 part 2, D-53, and the M6 wiring fix):
+focus-after-confirm landed on the hidden source editor; TM appeared dead due to a silently
+swallowed store language-pair mismatch; split-part editors were never re-wired.
+**Next task: M7** (characters, kind, notes). Do not go past the first task below that
 is not marked done.
 
 | Milestone | State |
@@ -17,7 +19,8 @@ is not marked done.
 | M2.6 in-message IMM32 clause capture · M2.7 modern IME rendering | ✅ **DONE** — verified by the owner's gate run across MS-IME JA, ATOK, MS Pinyin and MS-IME Korean |
 | **M2.5 IME gate** | ✅ **PASSED 2026-08-24 — 6/6 recorded** (`docs/IME_REPORT.md`) |
 | **M5.1–M5.6** | ▶️ **CODE DONE 2026-08-24/25 — M5.1 PASSED; M5.2–M5.6 wait on the owner's batch test** |
-| M6 – M11 | ⏸ open after the M5 batch |
+| **M6.1–M6.4** | ▶️ **CODE DONE 2026-08-25 — manual acceptance pending: owner** (marker drag/place/delete, part split + Tab) |
+| M7 – M11 | ⏸ open after the M5/M6 batches |
 | M-TSF (TSF text store) | ⏸ not started; Q7 resolved — stays scheduled after M6 (IMM32 path carries JA/ATOK today) |
 
 > **Model reform, 2026-08-25 (D-49/D-50/D-51).** A chapter no longer has pages: its images
@@ -27,12 +30,13 @@ is not marked done.
 > not migrated (it never shipped). Task text below that predates the reform has been updated;
 > if you find a leftover mention of pages or regions, the SPEC wins — fix the plan.
 
-Verified baseline at that commit: `dotnet build PigComic.sln` clean, **213/213 tests**,
-**`--smoke` 19/19**. If those numbers differ when you start, something regressed — find out
-what before touching anything else.
+Verified baseline at that commit: `dotnet build PigComic.sln` clean, **221/221 tests**,
+**`--smoke` 25/25** (the M6 marker drag/place/delete/split + real-pointer placement +
+drag-to-reorder checks added 2026-08-25). If those numbers differ when you start, something
+regressed — find out what before touching anything else.
 
-**If you are an executing model:** begin at **M6** (marker editing) only after the owner
-confirms the M5.2–M5.6 batch; until then the batch list below is the manual test sheet. Do
+**If you are an executing model:** begin at **M7** (characters, kind, notes) only after the
+owner clears the M5/M6 batches; until then the batch list below is the manual test sheet. Do
 not re-run the finished milestones above, and do not re-open the IME work — the gate is closed
 and `src/PigComic.App/Ime/` is verified against four IMEs. If you touch any editable text
 field, it must be a `PartTextEditor` (SPEC §21.2); `--smoke` enforces that.
@@ -41,15 +45,27 @@ field, it must be a `PartTextEditor` (SPEC §21.2); `--smoke` enforces that.
 colored bands are the synthetic test pattern, not a bug — bubble overlays draw on top):
 1. 3 rows in one flat reading-order list (no page headers, D-49); Ctrl+Up/Down moves; status bar updates.
 2. Click each cross → row selects; select a bubble whose marker is on the second strip image → the strip scrolls to it (no page switch, D-49).
-3. Type in a target → Draft; Enter → Translated + moves down; Ctrl+Enter skips confirmed;
-   Ctrl+Shift+Enter → Reviewed; Ctrl+L locks (D-16 restore); Ctrl+Insert copies source;
-   confirm writes `bin/…/strips/tm.db` rows.
+3. Type in a target → Draft; **Enter inserts a line break**; Ctrl+Enter on a non-last part
+   moves focus to the next part editor (no commit); Ctrl+Enter on the last part → Translated
+   + moves to the next available segment (the status-bar **"Skip confirmed"** checkbox governs
+   whether already-Translated/Reviewed bubbles are skipped; Locked are always skipped);
+   Ctrl+Shift+Enter → Reviewed (same part-walk); Ctrl+L locks (D-16 restore); Ctrl+Insert
+   copies source; confirm writes `bin/…/strips/tm.db` rows.
 4. TM box shows matches after confirms; Ctrl+1/double-click inserts (Draft); TB inserts at
    caret; F2/double-click edits source inline (Enter/Esc).
 5. Ctrl+S saves ("Saved HH:mm"); the dirty dot shows unsaved; autosave fires on the
    `project.json` interval (default 180 s; drop `autosaveSeconds` to 10 in
    `bin/…/strips/project.json` to test).
 6. IME: JA composition inside a part editor passes §21 items 1–4 (real IME session).
+
+**M6.1–M6.4 owner batch test** (same example chapter):
+1. Drag each example bubble's cross; Esc mid-drag reverts; save + unzip to check the new marker coordinates (§15.1). Dragging a bubble's **main cross** past a neighbour's Y reorders the list; part-cross drags don't.
+2. Ctrl+B (crosshair) → click between two markers → new `u`-prefixed row appears between them, kind Speech, Untranslated; Shift+click stays armed; Ctrl+B again or Esc disarms (§15.2).
+3. Delete (image pane or list focused, not inside a text editor) → confirm dialog with source preview → row+cross gone, selection lands on a neighbour (§15.2).
+4. Alt+3 on a bubble → 3 stacked editors + 3 part crosses 48 px apart; Ctrl+Enter walks parts and commits only on the last; Alt+1 merges with `\n`s; Tab/Shift+Tab moves between parts, nothing at the ends; drag a part cross (bubble selected) moves only that part (§15.3).
+
+**Owner todo (pending, recorded for M7):** scroll wheel should respond anywhere the mouse
+points, and pane-synchronized scrolling once the edit pane exists.
 
 The owner's gate record and the per-IME evidence live in `docs/IME_REPORT.md`; the IME
 architecture and its do-not-reintroduce list are in `docs/IME_HANDOFF.md`. Read the latter
@@ -276,17 +292,17 @@ Milestone order is risk-ordered and fixed. M2 was the gate for M5–M11; it reco
 - **Acceptance** (manual): clicking each cross selects its row; selecting a bubble whose marker is on the second strip image scrolls there (no page switch, D-49); a package whose media is a 50%-downscaled copy still draws overlays on the right spots (make one with the test builder).
 - **Delivered 2026-08-24**: overlay layer inside `TiledImageControl` (`OverlayRect` + `SetOverlays(overlays, pageWidth)`; §5.6 scale = decoded media width / page width), click hit-testing with the smallest-topmost rule (`OverlayClicked`), `CenterOn(originalRegion)` for off-screen centering, PageUp/PageDown on the image pane (`PageNavigationRequested`). The editor wires selection both ways: list→(page switch + center + overlays), image click→list select. (Note: `ImagePaneViewModel` was folded into the editor wiring — no UI-less value yet; will appear with M6 interaction state.)
 
-### M5.4 Target editor + confirm loop — CODE DONE 2026-08-24 (manual acceptance pending: owner; IME §21 items 1–4 need a real IME session)
+### M5.4 Target editor + confirm loop — CODE DONE 2026-08-24 (manual acceptance pending: owner; IME §21 items 1–4 need a real IME session) · **Amended 2026-08-25 (D-52): Enter = newline, Ctrl+Enter = confirm, "Skip confirmed" checkbox**
 - **Files**: `src/PigComic.App/Controls/PartTextEditor.cs` (TextBox subclass with the M2.5 IME-safe Enter guard), `SegmentListView` target column templates, `ViewModels/ConfirmService.cs`.
-- **Behavior**: SPEC §14.3 target column (parts stacked, centered) + §14.4 full confirm loop (Draft on typing, Enter/Ctrl+Enter/Ctrl+Shift+Enter, TM write with context prevHash, empty-target rule, Locked read-only, Ctrl+L per D-16, Ctrl+Insert copy-source). ⚡QA hook is a no-op until M8 (interface `IConfirmQa` with null implementation).
-- **Acceptance** (manual): translate the 3 example bubbles with Enter — statuses turn Translated, selection advances, TM rows appear in tm.db (check via a temporary debug menu "dump TM count"); JA IME composition in the editor passes §21 items 1–4; Ctrl+Enter from bubble 1 skips confirmed bubble 2 to reach 3.
-- **Delivered 2026-08-24**: `PartTextEditor` gained the §14.4 variants (`VariantConfirmRequested` Ctrl/Ctrl+Shift+Enter, `CopySourceRequested` Ctrl+Insert, `ToggleLockRequested` Ctrl+L) — plain Enter still `ConfirmRequested`. `BubbleRowViewModel` owns part cells (`PartViewModel` per part, TwoWay), typing→Untranslated→Draft demotion, `ApplyStatus`, `ToggleLocked` (D-16 restore), `CopySourceToPart`. `ConfirmService` implements §14.4 (empty-target rule, TM upsert with `prevHash` of the previous bubble, `MoveNext(skipConfirmed)`, `IConfirmQa` = `NullConfirmQa`). Editors are wired via `SegmentListView`'s `ContainerPrepared`; after confirm the selection moves and the next row's first part editor is focused/scrolled (M-spec "focus its first part editor"). The debug example passes the strips dir as the project folder, and `EditorView.OpenStores` auto-creates `tm.db`/`tb.db` there on first open (the store constructors create the file + schema), so confirms land TM rows without a full `ProjectFolder.Create` (which requires an empty folder and crashed on the second click — removed). **IME note**: part editors are `PartTextEditor` (left/top text placement stays — IME mandate, SPEC §21.2); the target text therefore sits left-aligned inside the cell, not centered; center-alignment is cosmetic and conflicts with the IME caret rule (docs/IME_HANDOFF.md §4 note).
+- **Behavior**: SPEC §14.3 target column (parts stacked, centered) + §14.4 full confirm loop (Draft on typing, Enter = newline / Ctrl+Enter / Ctrl+Shift+Enter per D-52, TM write with context prevHash, empty-target rule, Locked read-only, Ctrl+L per D-16, Ctrl+Insert copy-source). ⚡QA hook is a no-op until M8 (interface `IConfirmQa` with null implementation).
+- **Acceptance** (manual): translate the 3 example bubbles with Ctrl+Enter — statuses turn Translated, selection advances, TM rows appear in tm.db (check via a temporary debug menu "dump TM count"); JA IME composition in the editor passes §21 items 1–4; the "Skip confirmed" checkbox in the status bar toggles whether the advance lands on already-confirmed bubbles (tick it off and confirm from bubble 1 → lands on confirmed bubble 2; tick it on → skips to 3).
+- **Delivered 2026-08-24**: `PartTextEditor` gained the §14.4 variants (`VariantConfirmRequested` Ctrl/Ctrl+Shift+Enter, `CopySourceRequested` Ctrl+Insert, `ToggleLockRequested` Ctrl+L) — plain Enter still `ConfirmRequested`. `BubbleRowViewModel` owns part cells (`PartViewModel` per part, TwoWay), typing→Untranslated→Draft demotion, `ApplyStatus`, `ToggleLocked` (D-16 restore), `CopySourceToPart`. `ConfirmService` implements §14.4 (empty-target rule, TM upsert with `prevHash` of the previous bubble, `MoveNext(skipConfirmed)`, `IConfirmQa` = `NullConfirmQa`). Editors are wired via `SegmentListView`'s `ContainerPrepared`; after confirm the selection moves and the next row's first part editor is focused/scrolled (M-spec "focus its first part editor"). The debug example passes the strips dir as the project folder, and `EditorView.OpenStores` auto-creates `tm.db`/`tb.db` there on first open (the store constructors create the file + schema), so confirms land TM rows without a full `ProjectFolder.Create` (which requires an empty folder and crashed on the second click — removed). **IME note**: part editors are `PartTextEditor` (left/top text placement stays — IME mandate, SPEC §21.2); the target text therefore sits left-aligned inside the cell, not centered; center-alignment is cosmetic and conflicts with the IME caret rule (docs/IME_HANDOFF.md §4 note). **Amended 2026-08-25 (owner directive, D-52)**: plain Enter now inserts a line break (`PartTextEditor.EnterInsertsNewline`, set on the target part editors only — the F2 source editor keeps Enter-to-commit via the default mode); Ctrl+Enter is the confirm gesture and fires the same `ConfirmRequested` event, Ctrl+Shift+Enter stays Reviewed. Advance-after-confirm is governed by `ConfirmService.SkipConfirmed`, backed by a "Skip confirmed" status-bar checkbox (`EditorViewModel.SkipConfirmed`, persisted in `registry.json` under `editorLayout` via `EditorLayoutStore`) — Locked bubbles are now always skipped by `MoveNext`. KeyBindings' Ctrl+Enter helper renamed `IsConfirm` (Enter is no longer a confirm). Smoke +3 checks (D-52 routing both modes + a part-walk check on the example chapter's 2-part b0002) + a plumbing assertion in the editor check. **Focus fix 2026-08-25**: `FocusFirstPartOfSelected`/`FirstEditorOfSelected` picked the row's collapsed `SourceEditor` (declared first in the template) instead of the target part editor, so after a confirm the caret stayed in the old bubble and the new textbox never activated — latent since M5.4 (the smoke only checked status, not focus). Fixed by filtering `Name != "SourceEditor"` and matching the `PartViewModel.Index` (1-based) precisely; `_lastFocusedEditor` is now set synchronously in `FocusEditor` (Focus/GotFocus is async in the headless host). **Part-walk (D-52)**: a confirm gesture on a non-last part advances focus to the next part editor within the same bubble without committing; only confirming the last part commits the bubble and advances.
 
 ### M5.5 TM/TB box — CODE DONE 2026-08-24 (manual acceptance pending: owner)
 - **Files**: `src/PigComic.App/Views/MatchListView.axaml(.cs)`, `ViewModels/MatchListViewModel.cs`, function pane shell `Views/FunctionPaneView.axaml`.
 - **Behavior**: SPEC §9 (debounced query, numbering, Ctrl+1..9 + double-click insert semantics incl. TM-insert collapse D-12 and status→Draft, TB caret insert, row rendering incl. diff underline — a simple per-code-point LCS diff is specified as: underline code points of the stored source not present in the LCS with the query).
 - **Acceptance** (manual): confirm `おはようございます` in bubble 1; create a 4th bubble via builder-made package with source `おはよう ございます` → selecting it shows a 100% match; Ctrl+1 fills the target and sets Draft; a TB term seeded via XLSX import appears after TM matches and Ctrl+N at caret inserts only the term.
-- **Delivered 2026-08-24**: `MatchListViewModel` (150 ms debounce, stale-discard via CTS generation, `TmQueryContext` with char/kind/prevHash), `MatchRowViewModel` (TM: score/target-⏎/origin-chapter/character; TB: term→term, ⛔ forbidden, notes tooltip), `SourceDiff` (per-rune LCS → underline runs → `UnderlineConverter`), `MatchListView` (`Ctrl+1..9` routed at the editor window, double-click), `FunctionPaneView` (TM/TB box top, M7 placeholders bottom). TM insert → `SetPartCount(1)` + text replace + `Draft` (D-12); TB insert → caret insertion into the focused part editor (`SegmentListView.InsertAtCaret`, falls back to the selected row).
+- **Delivered 2026-08-24**: `MatchListViewModel` (150 ms debounce, stale-discard via CTS generation, `TmQueryContext` with char/kind/prevHash), `MatchRowViewModel` (TM: score/target-⏎/origin-chapter/character; TB: term→term, ⛔ forbidden, notes tooltip), `SourceDiff` (per-rune LCS → underline runs → `UnderlineConverter`), `MatchListView` (`Ctrl+1..9` routed at the editor window, double-click), `FunctionPaneView` (TM/TB box top, M7 placeholders bottom). TM insert → `SetPartCount(1)` + text replace + `Draft` (D-12); TB insert → caret insertion into the focused part editor (`SegmentListView.InsertAtCaret`, falls back to the selected row). **Fix 2026-08-25 (D-53)**: a store-open failure (language-pair mismatch after D-51, corrupt/locked DB, no project folder) was silently swallowed by `OpenStores` → the box showed an empty result set indistinguishable from "no matches"; `OpenStores` now captures the reason into `_storeError` and `MatchListViewModel.StoreError` surfaces it in the results-box status. The smoke editor check now passes the project folder and asserts a confirm lands a ≥100% TM match on re-select (the M5.4 acceptance gap that hid this).
 
 ### M5.6 Keyboard map + save/autosave — CODE DONE 2026-08-24 (manual acceptance pending: owner)
 - **Files**: `src/PigComic.App/KeyBindings.cs`, wiring in EditorView; `Services/AutosaveTimer.cs`.
@@ -296,27 +312,32 @@ Milestone order is risk-ordered and fixed. M2 was the gate for M5–M11; it reco
 
 ---
 
-## M6 — Marker editing + target split
+## M6 — Marker editing + target split ▶️ CODE DONE 2026-08-25 (manual acceptance pending: owner)
 
-### M6.1 Marker move
+### M6.1 Marker move — CODE DONE 2026-08-25 (manual acceptance pending: owner)
 - **Files**: `src/PigComic.App/Controls/MarkerInteraction.cs` (hit-test + drag state machine), TiledImageControl integration.
 - **Behavior**: SPEC §15.1 (drag the cross to move it; no handles and no resize; clamp to the strip on commit; one undo record per drag via M1.6 `SetMarker`).
 - **Acceptance** (manual): drag each example bubble's cross; Esc mid-drag reverts; saved file shows new marker coordinates (unzip and inspect).
+- **Delivered 2026-08-25**: `MarkerInteraction` state machine + `TiledImageControl` integration. Pointer press hit-tests source AND part markers (parts only of the selected bubble, nearest within 12 screen px / zoom); press starts the drag, the control renders a local preview cross (model untouched), release commits via `MarkerDragCompleted(bubbleId, partIndex?, point)` → editor applies `SetMarker`/`SetPartMarker` + marks dirty + refreshes overlays. No-op commits (press+release without move) are skipped. Clamped to the strip on commit and during preview. Esc cancels the drag and disarms placement (`CancelInteraction`, routed at the window). Pointer capture set on press/released on release. Smoke "M6 marker drag/place/delete/split" drives the internal interaction seam with strip coordinates. **Fix 2026-08-25 (D-55)**: (a) `DrawOverlays` skipped drawing part 1 separately (it coincides with the source — a single bubble no longer shows two crosses); (b) `BubbleMutations.SetMarker` now mirrors the move into part 1 (D-18 invariant enforced in Core) so dragging the source no longer leaves a stale part-1 cross. **Drag-to-reorder 2026-08-25 (D-57, Q8 resolved)**: a source-marker drag past a neighbour's Y renumbers the reading order (`BubbleMutations.RenumberByMarkerY`) and rebuilds the list; part-marker drags never reorder (PSD-only).
 
-### M6.2 Create bubble
-- **Files**: `MarkerInteraction.cs` (placement mode), `EditorViewModel` command.
+### M6.2 Create bubble — CODE DONE 2026-08-25 (manual acceptance pending: owner)
+- **Files**: `MarkerInteraction.cs` (placement mode), `EditorView` command.
 - **Behavior**: SPEC §15.2 create (Ctrl+B arm, single click drops the marker, id/order rules, Shift-hold repeat).
 - **Acceptance** (manual): click between two existing markers -> new row appears between them with kind Speech/Untranslated; saved XML has `u`-prefixed id and renumbered orders.
+- **Delivered 2026-08-25**: `KeyBindings.IsPlaceMarker` (Ctrl+B, toggles arm/disarm; crosshair cursor; Esc also disarms), placement click → `PlaceMarkerRequested` → `BubbleMutations.AddBubble` (Core M1.6: `u`+8-hex id, kind Speech, status Untranslated, empty source, part 1 = source marker, Y-ordered insertion D-17) → list rebuild + select new row + focus its editor + counts label refresh. Shift-hold on the click keeps the mode armed (SPEC §15.2). Toolbar button deferred (no toolbar in the current editor UI; keyboard path complete). **Fix 2026-08-25 (D-55)**: placement only worked on decoded tiles / crosses, not gray areas — `Render` now fills the full bounds with a gray backdrop (tiles draw on top), `IsHitTestVisible = true` is set, and off-strip clicks are rejected (SPEC §15.2 "click on the strip" — no misleading edge bubble). Smoke raises a real `PointerPressedEventArgs` to confirm gray-area placement works and off-strip is rejected.
 
-### M6.3 Delete bubble
-- **Files**: `EditorViewModel` command + confirm dialog.
+### M6.3 Delete bubble — CODE DONE 2026-08-25 (manual acceptance pending: owner)
+- **Files**: `EditorView` command + confirm dialog.
 - **Behavior**: SPEC §15.2 delete.
 - **Acceptance** (manual): Delete removes row+cross; Ctrl+Z restores it fully (after M9 undo exists — until then acceptance is: removed and persisted correctly on save; amend this acceptance to include undo when M9 lands).
+- **Delivered 2026-08-25**: Delete key routed at the editor window (guard: never while keyboard focus is inside a part/source editor — there Delete is text deletion), confirm dialog with source-text preview (`ContentDialog`), `BubbleMutations.DeleteBubble` (snapshot record ready for M9 undo), list rebuild, selection lands on the next row (or previous), counts refresh. Smoke path `ApplyDeleteSelected` skips the dialog.
 
-### M6.4 Target split parts
-- **Files**: `ViewModels/SegmentListViewModel.cs` + `PartTextEditor` Tab handling + `EditorViewModel` Alt+1/2/3 commands (Core work already in M1.6).
+### M6.4 Target split parts — CODE DONE 2026-08-25 (manual acceptance pending: owner)
+- **Files**: `ViewModels/SegmentListViewModel.cs` + `SegmentListView` Tab handling + `EditorView` Alt+1/2/3 commands (Core work already in M1.6).
 - **Behavior**: SPEC §15.3 (stacked marker defaults, merge join, Tab/Shift+Tab, part marker drag).
 - **Acceptance** (manual): Alt+3 on a bubble shows 3 stacked editors and 3 part crosses 48 px apart; text typed in parts round-trips through save; Alt+1 merges with `\n`s; TM write after confirm stores the joined target (verify via match box on a twin bubble).
+- **Delivered 2026-08-25**: `KeyBindings.SetPartCount` (Alt+1/2/3) → `BubbleMutations.SetPartCount` + `row.RefreshParts()` + dirty + overlay refresh. Tab/Shift+Tab inside a part editor moves focus to the next/previous part editor (`FocusPartEditor`), no-op at the boundaries (the spec's beep is omitted — `System.Windows.Extensions` is Windows-only; the move simply does not happen). Part marker drag is the M6.1 state machine with `partIndex` — enabled whenever the bubble is selected (parts drawn). **Wiring fix**: the inner parts `ItemsControl` realizes fresh editors after a split that `ContainerPrepared` never sees — `WireEditorsIn` now re-wires a row whenever its `Parts` collection changes (otherwise Ctrl+Enter/Tab on the new part editors silently did nothing). **Merge fix 2026-08-25 (D-56)**: the merge branch joined all texts into part 1 regardless of target count — blank parts left blank rows and 3→2 duplicated part 2's text. Now merging to N keeps parts 1..N and appends only non-empty texts of parts N+1..end into part N; only to-1 resets the marker. 3 Core tests guard it.
+- **Note (D-54)**: part 1's marker coincides with the source marker by default (D-18); the hit-test gives the SOURCE marker precedence on ties so a drag near the main cross moves the source, not part 1.
 
 ---
 

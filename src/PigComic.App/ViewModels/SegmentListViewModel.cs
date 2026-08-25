@@ -82,7 +82,12 @@ public partial class SegmentListViewModel : ObservableObject
         }
     }
 
-    /// <summary>Moves to the next bubble row in reading order (SPEC §14.4 next-bubble).</summary>
+    /// <summary>
+    /// Moves to the next bubble row in reading order (SPEC §14.4 next-bubble).
+    /// Locked bubbles are never a valid landing spot (they are read-only); when
+    /// <paramref name="skipConfirmed"/> is set, Translated/Reviewed bubbles are
+    /// skipped too (the status-bar "Skip confirmed" option, D-52).
+    /// </summary>
     public void MoveNext(bool skipConfirmed)
     {
         var start = Items.IndexOf(SelectedItem ?? Items[0]);
@@ -94,6 +99,7 @@ public partial class SegmentListViewModel : ObservableObject
         for (var i = start + 1; i < Items.Count; i++)
         {
             if (Items[i] is BubbleRowViewModel row &&
+                !row.IsLocked &&
                 (!skipConfirmed || row.Status is BubbleStatus.Untranslated or BubbleStatus.Draft))
             {
                 SelectedItem = row;
