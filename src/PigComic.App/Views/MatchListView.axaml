@@ -1,0 +1,46 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:PigComic.App.ViewModels"
+             x:Class="PigComic.App.Views.MatchListView"
+             x:DataType="vm:MatchListViewModel">
+    <DockPanel>
+        <TextBlock DockPanel.Dock="Top" Text="TM / TB results" FontWeight="SemiBold" Margin="12,8,12,0"/>
+        <TextBlock DockPanel.Dock="Bottom" Text="{Binding StatusText}" FontSize="12"
+                   Foreground="Gray" Margin="12,0,0,4"/>
+        <ListBox x:Name="MatchList" ItemsSource="{Binding Rows}" Background="Transparent"
+                 DoubleTapped="OnDoubleTapped"
+                 SelectionMode="Single">
+            <ListBox.ItemTemplate>
+                <DataTemplate x:DataType="vm:MatchRowViewModel">
+                    <Grid ColumnDefinitions="24,*" Margin="0,2">
+                        <TextBlock Grid.Column="0" Text="{Binding Number}"
+                                   HorizontalAlignment="Center" VerticalAlignment="Top"
+                                   FontWeight="SemiBold" FontSize="12"/>
+                        <StackPanel Grid.Column="1">
+                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                <TextBlock Text="{Binding ScoreText}" FontWeight="SemiBold" FontSize="12"/>
+                                <TextBlock Text="⛔" FontSize="12" IsVisible="{Binding IsForbidden}"/>
+                            </StackPanel>
+                            <TextBlock Text="{Binding TargetText}" TextWrapping="Wrap" FontSize="13"/>
+                            <ItemsControl ItemsSource="{Binding DiffRuns}" IsVisible="{Binding IsTm}">
+                                <ItemsControl.ItemsPanel>
+                                    <ItemsPanelTemplate>
+                                        <WrapPanel/>
+                                    </ItemsPanelTemplate>
+                                </ItemsControl.ItemsPanel>
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate x:DataType="vm:DiffRun">
+                                        <TextBlock Text="{Binding Text}" FontSize="12" Foreground="Gray"
+                                                   TextDecorations="{Binding Underline, Converter={x:Static vm:UnderlineConverter.Instance}}"
+                                                   TextWrapping="Wrap"/>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                            <TextBlock Text="{Binding MetaText}" FontSize="11" Foreground="#88000000"/>
+                        </StackPanel>
+                    </Grid>
+                </DataTemplate>
+            </ListBox.ItemTemplate>
+        </ListBox>
+    </DockPanel>
+</UserControl>

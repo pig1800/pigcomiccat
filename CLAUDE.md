@@ -7,10 +7,12 @@ Desktop CAT tool for comic/manga translation.
 >    built, what the verified build/test/smoke baseline is, and which task is next. The
 >    markdown docs are the authoritative record of project state — treat them, not your
 >    guesses and not leftover context, as the truth.
-> 2. **As of 2026-08-24 the next task is M5.1.** M0–M4 and the IME work are done and the
->    M2.5 IME gate passed 6/6 (`docs/IME_REPORT.md`), so M5–M11 are open. Do not re-run
->    finished milestones, and do not re-open the IME stack — it is verified against MS-IME
->    Japanese, ATOK, MS Pinyin and MS-IME Korean.
+> 2. **As of 2026-08-25: M5.1–M5.6 are CODE DONE** (editor shell, segment list, overlays,
+>    confirm loop, TM/TB box, keys/save/autosave). M5.1's acceptance PASSED; the M5.2–M5.6
+>    acceptances are manual and wait on the owner (a batch test is described in the PLAN
+>    STATUS block). M0–M4 and the IME work are done and the M2.5 IME gate passed 6/6
+>    (`docs/IME_REPORT.md`). Do not re-run finished milestones, and do not re-open the IME
+>    stack — it is verified against MS-IME Japanese, ATOK, MS Pinyin and MS-IME Korean.
 > 3. Then read `docs/SPEC.md` — the single source of truth for behavior — before writing code.
 
 Work strictly from the task list in `docs/PLAN.md`, one task per session, in order, starting from the first task the STATUS block does **not** mark done. If the spec is silent on something you need, do NOT guess: add it to `docs/OPEN_QUESTIONS.md` and stop.
@@ -22,8 +24,39 @@ Work strictly from the task list in `docs/PLAN.md`, one task per session, in ord
 - SkiaSharp is pinned to **3.119.4** — the version Avalonia 12.1.1 requires. Do not downgrade it (NU1605 breaks the build).
 - `tests/PigComic.Core.Tests` — xunit. Every Core feature ships with tests in the same task/milestone; the normative test tables are in SPEC §7.7, §11.1, §12.1, §26.
 
-## Avalonia 12 conventions (READ BEFORE WRITING UI CODE)
+## Editor (M5) conventions
 
+- **The editor is one window**: `EditorView` (three-pane Grid + two `GridSplitter`s), fed by
+  `Services/ChapterSession` (owns `PcmlDocument`, dirty flag, save, journal Discard gate,
+  media extraction to `%TEMP%/pigcomic-media/<hash>` — the tiled control needs a real file
+  path; Core is never touched for media). `EditorLayoutStore` persists splitter widths into
+  the §6.4 `registry.json` (merge-preserving).
+- **Selection plumbing**: `SegmentListViewModel` holds the flat reading-order item list
+  (page headers + `BubbleRowViewModel`s); `BubbleRowViewModel` wraps the Core `Bubble` and
+  owns the `PartViewModel` cells, Draft-on-typing, lock (D-16), source F2-edit. `ConfirmService`
+  implements §14.4 (Enter/Ctrl+Enter/Ctrl+Shift+Enter, empty-target rule, TM upsert with
+  prevHash, `IConfirmQa` = `NullConfirmQa` until M8). `MatchListViewModel` is the §9 box
+  (150 ms debounce, stale discard). Both directions of list↔image sync live in `EditorView`
+  code-behind (`RefreshOverlays`, `CenterOn`, `OnOverlayClicked`).
+- **Crash lessons (already cost two sessions — do not regress)**:
+  - `TiledImageControl.Install` must read a replaced bitmap's `PixelSize` **before** disposing
+    it (Avalonia `Bitmap` throws `ObjectDisposedException` on post-dispose access).
+  - `TileDecoder` does the whole region crop **inside `_sync`** and checks `_disposed` first;
+    the shared `_full` SKBitmap must never be read outside the lock, or a page-switch
+    `Dispose` frees native memory mid-`DrawBitmap` (`AccessViolationException`).
+  - Debug tool `ExampleChapterBuilder.Build` deletes an existing output before zipping
+    (`ZipArchiveMode.Create` throws on an existing file). Never call `ProjectFolder.Create`
+    on a non-empty folder (it throws) — for the debug example the stores auto-create via
+    the `TmStore`/`TbStore` constructors.
+- The debug example chapter (Debug menu → "Editor: open example chapter") renders the
+  synthetic `StripImageGenerator` bands (colored 500 px bands with red lines) — that is the
+  test pattern, not a bug; bubble overlays draw on top.
+- **Avalonia 12 note**: `GridSplitter` uses `ResizeDirection="Columns"` (not `Column`) and
+  persists widths via the `DragCompleted` (`VectorEventArgs`) handler. `Window` has an
+  instance `KeyBindings` property, so the app's `PigComic.App.KeyBindings` helpers must be
+  reached by full name from window subclasses.
+
+## Avalonia 12 conventions (READ BEFORE WRITING UI CODE)
 The project moved from Avalonia 11 to 12; older snippets, blog posts, and your own priors are often 11-era and will not compile. The rules that bite:
 
 - **File/folder pickers**: the legacy `OpenFileDialog` / `SaveFileDialog` / `OpenFolderDialog` / `FileDialogFilter` types are **deleted**. Use `PigComic.App.Services.FilePickers` (`OpenFileAsync` / `SaveFileAsync` / `OpenFolderAsync`) — never call `IStorageProvider` directly, and never block on a picker with `.Result` / `.GetAwaiter().GetResult()` (it deadlocks the UI thread).
@@ -57,10 +90,12 @@ src/PigComic.App/bin/Debug/net8.0/PigComic.App.exe --smoke
 
 `--smoke` is a non-interactive UI self-check (exit 0 = pass). It verifies the
 `PartTextEditorTheme` still applies, that `PART_TextPresenter` is the clause-aware
-`ImeTextPresenter`, that a clause-highlighted preedit lays out, and that every window's
-XAML loads. **Run it after any Avalonia upgrade, theme edit, or XAML change** — this
-failure class compiles fine and passes `dotnet test`, so nothing else catches it. Add a
-check there whenever you add a window. It is deliberately not an xunit test: instantiating
-Avalonia controls under the xunit runner deadlocks (`docs/IME_HANDOFF.md` §8).
+`ImeTextPresenter`, that a clause-highlighted preedit lays out, that every window's
+XAML loads, and that the editor opens a real strip-media chapter, renders page 1, syncs
+the selection to page 2 and runs the draft/confirm loop. **Run it after any Avalonia
+upgrade, theme edit, or XAML change** — this failure class compiles fine and passes
+`dotnet test`, so nothing else catches it. Add a check there whenever you add a window.
+It is deliberately not an xunit test: instantiating Avalonia controls under the xunit
+runner deadlocks (`docs/IME_HANDOFF.md` §8).
 
 `dotnet run --project src/PigComic.App` launches the app interactively.

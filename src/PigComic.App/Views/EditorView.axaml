@@ -1,0 +1,51 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:PigComic.App.ViewModels"
+        xmlns:controls="clr-namespace:PigComic.App.Controls"
+        xmlns:views="using:PigComic.App.Views"
+        x:Class="PigComic.App.Views.EditorView"
+        x:DataType="vm:EditorViewModel"
+        Title="Editor" Width="1280" Height="800" MinWidth="900" MinHeight="600">
+    <DockPanel>
+        <Border DockPanel.Dock="Bottom" Background="#12000000" Padding="10,4"
+                BorderThickness="0,1,0,0" BorderBrush="#33000000">
+            <StackPanel Orientation="Horizontal" Spacing="20">
+                <TextBlock Text="{Binding ChapterLabel}" FontWeight="SemiBold"/>
+                <TextBlock Text="{Binding PageLabel}"/>
+                <TextBlock Text="{Binding CountsLabel}"/>
+                <TextBlock Text="Selected:" Foreground="Gray"/>
+                <TextBlock Text="{Binding SelectionLabel}"/>
+                <TextBlock Text="·"/>
+                <TextBlock Text="{Binding SaveStateLabel}"/>
+                <TextBlock Text="· READ-ONLY" Foreground="#B23A00" FontWeight="SemiBold"
+                           IsVisible="{Binding IsReadOnly}"/>
+            </StackPanel>
+        </Border>
+
+        <TextBlock x:Name="LoadError" DockPanel.Dock="Top" Text="{Binding LoadError}"
+                   Foreground="IndianRed" Margin="12,8" TextWrapping="Wrap"
+                   IsVisible="{Binding HasLoadError}"/>
+
+        <Grid x:Name="PaneGrid" ColumnDefinitions="Auto,6,*,6,Auto">
+            <Border Grid.Column="0" Background="#1A000000">
+                <controls:TiledImageControl x:Name="ImagePane"/>
+            </Border>
+
+            <GridSplitter Grid.Column="1" Width="6" Background="Transparent"
+                          ResizeDirection="Columns" ResizeBehavior="PreviousAndNext"
+                          DragCompleted="OnSplitterDragCompleted"/>
+
+            <Border Grid.Column="2" MinWidth="260" BorderBrush="#33000000" BorderThickness="0,0,1,0">
+                <views:SegmentListView x:Name="SegmentList"/>
+            </Border>
+
+            <GridSplitter Grid.Column="3" Width="6" Background="Transparent"
+                          ResizeDirection="Columns" ResizeBehavior="PreviousAndNext"
+                          DragCompleted="OnSplitterDragCompleted"/>
+
+            <Border Grid.Column="4" MinWidth="200" Background="#0FFFFFFF">
+                <views:FunctionPaneView x:Name="FunctionPane"/>
+            </Border>
+        </Grid>
+    </DockPanel>
+</Window>

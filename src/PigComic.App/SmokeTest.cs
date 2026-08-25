@@ -1,9 +1,13 @@
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.LogicalTree;
+using Avalonia.Threading;
 using PigComic.App.Controls;
 using PigComic.App.Ime;
+using PigComic.App.Rendering;
+using PigComic.App.Services;
 using PigComic.App.Views;
+using PigComic.Core.Domain;
 
 namespace PigComic.App;
 
@@ -247,6 +251,123 @@ internal static class SmokeTest
         Check("RelinkDialog constructs", () => new RelinkDialog(["a.pcml"]) is not null);
         Check("ImeTestWindow constructs", () => new ImeTestWindow() is not null);
         Check("SpikeWindow constructs", () => new SpikeWindow() is not null);
+        Check("EditorView constructs (missing chapter degrades to an error banner)",
+            () =>
+            {
+                var editor = new EditorView(Path.Combine(Path.GetTempPath(), "pigcomic-smoke-missing.pcml"));
+                var vmOk = editor.DataContext is ViewModels.EditorViewModel;
+                var banner = editor.FindControl<TextBlock>("LoadError") is not null;
+                return vmOk && banner;
+            });
+
+        // 9b. The editor's real decode path: an actual chapter with strip media opens, its
+        //     tiles arrive through DecodeQueue → OnTileReady → Install, and the window
+        //     closes cleanly. This caught the M5.1 crash class: Install disposed the
+        //     replaced bitmap and then re-read its PixelSize — an ObjectDisposedException
+        //     that only fires when a tile key is installed twice (a normal editor flow).
+        CheckDetail("EditorView renders a real chapter and closes cleanly", () =>
+        {
+            var tmp = Path.Combine(Path.GetTempPath(), "pigcomic-smoke-editor", Guid.NewGuid().ToString("N"));
+            try
+            {
+                StripImageGenerator.Generate(tmp, 640, 1280);
+                var pcml = ExampleChapterBuilder.Build(
+                    tmp, 640, 1280,
+                    Path.Combine(tmp, "strip.jpg"), Path.Combine(tmp, "strip.png"));
+
+                var editor = new EditorView(pcml);
+                editor.Show();
+
+                var vm = editor.DataContext as ViewModels.EditorViewModel;
+                var deadline = Environment.TickCount64 + 8000;
+                while (Environment.TickCount64 < deadline)
+                {
+                    Thread.Sleep(20);
+                    Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+                    if (vm?.PageLabel.Contains("1 / 2") == true)
+                    {
+                        break;
+                    }
+                }
+
+                var rendered = vm?.PageLabel.Contains("1 / 2") == true;
+
+                // M5.3: selecting the p0002 bubble from the list switches the page
+                // and the status bar shows the selected bubble. Use the real
+                // selection path (VM → SelectionChanged → EditorView).
+                if (vm?.Segments is { } segs)
+                {
+                    segs.SelectBubbleId("p0002-b0001");
+                    Dispatcher.UIThread.RunJobs();
+                }
+
+                var pageSwitched = vm?.PageLabel.Contains("2 / 2") == true;
+                var selectionLabel = vm?.SelectionLabel ?? "";
+
+                // M5.4: draft-on-typing + confirm loop through the real service.
+                var confirmOk = false;
+                var segmentList = editor.FindControl<Views.SegmentListView>("SegmentList");
+                if (vm?.Segments?.SelectedBubble is { } selected && segmentList?.Confirm is { } confirm)
+                {
+                    selected.Parts[0].Text = "ドドド";
+                    Dispatcher.UIThread.RunJobs();
+                    var becameDraft = selected.Status == BubbleStatus.Draft;
+                    confirm.ConfirmAndMove(review: false, skipConfirmed: false);
+                    Dispatcher.UIThread.RunJobs();
+                    var becameTranslated = selected.Status == BubbleStatus.Translated;
+                    confirmOk = becameDraft && becameTranslated;
+                }
+
+                var segments = editor.FindControl<Views.SegmentListView>("SegmentList");
+                var segmentCount = -1;
+                var headerCount = -1;
+                var rowCount = -1;
+                if (segments?.DataContext is ViewModels.SegmentListViewModel sl)
+                {
+                    segmentCount = sl.Items.Count;
+                    headerCount = sl.Items.OfType<ViewModels.SegmentPageHeaderViewModel>().Count();
+                    rowCount = sl.Items.OfType<ViewModels.BubbleRowViewModel>().Count();
+                }
+
+                // M5.5: the function pane hosts the match-list VM once data flows.
+                var functionPane = editor.FindControl<Views.FunctionPaneView>("FunctionPane");
+                var matchesWired = functionPane?.DataContext is ViewModels.MatchListViewModel;
+
+                editor.Close();
+                if (!rendered)
+                {
+                    return $"editor did not finish loading page 1 (PageLabel='{vm?.PageLabel}')";
+                }
+
+                if (!pageSwitched)
+                {
+                    return $"selecting p0002 bubble did not switch page (PageLabel='{vm?.PageLabel}')";
+                }
+
+                if (!selectionLabel.Contains("p0002-b0001"))
+                {
+                    return $"selection did not reach the status bar ('{selectionLabel}')";
+                }
+
+                if (!confirmOk)
+                {
+                    return "confirm loop failed: typed text did not demote to Draft / confirm did not reach Translated";
+                }
+
+                if (!matchesWired)
+                {
+                    return "function pane did not receive the match-list view model";
+                }
+
+                return segmentCount == 5 && headerCount == 2 && rowCount == 3
+                    ? null
+                    : $"segment list wrong: {segmentCount} items, {headerCount} headers, {rowCount} rows (want 5/2/3)";
+            }
+            finally
+            {
+                try { Directory.Delete(tmp, recursive: true); } catch { /* best effort */ }
+            }
+        });
 
         // 10. Enforce the SPEC §21.2 control rule: every editable field is a PartTextEditor,
         //     because a bare TextBox silently loses the whole IME stack (clause capture,
@@ -262,6 +383,7 @@ internal static class SmokeTest
             {
                 new MainWindow(), new CreateProjectDialog(), new RemoveProjectDialog("x", "y"),
                 new RelinkDialog(["a.pcml"]), new ImeTestWindow(), new SpikeWindow(),
+                new EditorView(Path.Combine(Path.GetTempPath(), "pigcomic-smoke-missing.pcml")),
             };
 
             foreach (var w in windows)

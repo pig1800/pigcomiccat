@@ -10,6 +10,7 @@
             <MenuItem Header="Debug (M2 only)">
                 <MenuItem Header="Spike: tiled canvas" Click="OnSpikeClick"/>
                 <MenuItem Header="IME gate test" Click="OnImeClick"/>
+                <MenuItem Header="Editor: open example chapter" Click="OnExampleChapterClick"/>
             </MenuItem>
         </Menu>
 

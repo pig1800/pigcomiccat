@@ -1,0 +1,59 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:PigComic.App.ViewModels"
+             xmlns:controls="using:PigComic.App.Controls"
+             x:Class="PigComic.App.Views.SegmentListView"
+             x:DataType="vm:SegmentListViewModel">
+    <DockPanel>
+        <TextBlock DockPanel.Dock="Top" Text="Segments" FontWeight="SemiBold" Margin="12,8"/>
+        <ListBox x:Name="SegmentList"
+                 ItemsSource="{Binding Items}"
+                 SelectedItem="{Binding SelectedItem, Mode=TwoWay}"
+                 KeyDown="OnListKeyDown"
+                 ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                 Background="Transparent"
+                 ContainerPrepared="OnContainerPrepared">
+            <ListBox.DataTemplates>
+                <DataTemplate x:DataType="vm:SegmentPageHeaderViewModel">
+                    <Border Background="#22000000" Padding="8,3" Margin="0,6,0,0">
+                        <TextBlock Text="{Binding Heading}" FontSize="12" FontWeight="SemiBold"
+                                   Foreground="#CC000000"/>
+                    </Border>
+                </DataTemplate>
+
+                <DataTemplate x:DataType="vm:BubbleRowViewModel">
+                    <Border Background="{Binding Tint}" Padding="6,4">
+                        <Grid ColumnDefinitions="*,1.2*" Margin="0,2">
+                            <StackPanel Grid.Column="0" Margin="0,0,8,0">
+                                <TextBlock FontSize="11" Foreground="#99000000">
+                                    <Run Text="{Binding KindText}"/>
+                                    <Run Text="·"/>
+                                    <Run Text="{Binding CharacterText}"/>
+                                    <Run Text="·"/>
+                                    <Run Text="{Binding Status}"/>
+                                </TextBlock>
+                                <TextBlock x:Name="SourceText" Text="{Binding SourceText}"
+                                           TextWrapping="Wrap" FontSize="13" MaxLines="3"
+                                           IsVisible="{Binding !IsEditingSource}"/>
+                                <controls:PartTextEditor x:Name="SourceEditor"
+                                                         Text="{Binding EditSource, Mode=TwoWay}"
+                                                         MultiLine="True" MinHeight="26" FontSize="13"
+                                                         IsVisible="{Binding IsEditingSource}"/>
+                            </StackPanel>
+                            <ItemsControl Grid.Column="1" ItemsSource="{Binding Parts}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate x:DataType="vm:PartViewModel">
+                                        <controls:PartTextEditor Text="{Binding Text, Mode=TwoWay}"
+                                                                 IsReadOnly="{Binding EditorReadOnly}"
+                                                                 MultiLine="True" MinHeight="26"
+                                                                 Margin="0,1" FontSize="13"/>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </Grid>
+                    </Border>
+                </DataTemplate>
+            </ListBox.DataTemplates>
+        </ListBox>
+    </DockPanel>
+</UserControl>

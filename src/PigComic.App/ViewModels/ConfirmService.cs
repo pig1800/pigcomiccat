@@ -1,0 +1,137 @@
+using PigComic.App.Services;
+using PigComic.Core.Domain;
+using PigComic.Core.Package;
+using PigComic.Core.Tm;
+
+namespace PigComic.App.ViewModels;
+
+/// <summary>QA hook on confirm (no-op until M8; SPEC §14.4 ⚡).</summary>
+public interface IConfirmQa
+{
+    void RunOnBubble(Bubble bubble);
+}
+
+/// <summary>Null implementation: confirmation never blocks on QA (D-15).</summary>
+public sealed class NullConfirmQa : IConfirmQa
+{
+    public static readonly NullConfirmQa Instance = new();
+
+    public void RunOnBubble(Bubble bubble)
+    {
+    }
+}
+
+/// <summary>
+/// M5.4 confirm loop (SPEC §14.4): Enter/Ctrl+Enter/Ctrl+Shift+Enter, empty-target
+/// rule, TM upsert with context (prevHash from the previous bubble in reading
+/// order), move-next semantics, lock/unlock (D-16). TM writes happen only on
+/// confirm, never while typing.
+/// </summary>
+public sealed class ConfirmService
+{
+    private readonly ChapterSession _session;
+    private readonly SegmentListViewModel _segments;
+    private readonly TmStore? _tm;
+    private readonly IConfirmQa _qa;
+
+    /// <summary>Raised after any bubble mutation that affects overlays/status bar.</summary>
+    public event Action? BubblesChanged;
+
+    /// <summary>Raised after the selection moved (editor focuses the next part editor).</summary>
+    public event Action? SelectionMoved;
+
+    public ConfirmService(ChapterSession session, SegmentListViewModel segments, TmStore? tm = null, IConfirmQa? qa = null)
+    {
+        _session = session;
+        _segments = segments;
+        _tm = tm;
+        _qa = qa ?? NullConfirmQa.Instance;
+    }
+
+    /// <summary>
+    /// Confirm the selected bubble and move on. <paramref name="review"/> (Ctrl+Shift+Enter)
+    /// confirms as Reviewed; <paramref name="skipConfirmed"/> (Ctrl+Enter) moves to the next
+    /// Untranslated/Draft bubble.
+    /// </summary>
+    public void ConfirmAndMove(bool review, bool skipConfirmed)
+    {
+        var row = _segments.SelectedBubble;
+        if (row is null || _session.Document.IsReadOnly)
+        {
+            return;
+        }
+
+        var target = row.Bubble.TargetJoined;
+        if (target.Length == 0)
+        {
+            // §14.4: Enter on an empty target just moves on — no status change, no TM write.
+            MoveNext(false);
+            return;
+        }
+
+        row.ApplyStatus(review ? BubbleStatus.Reviewed : BubbleStatus.Translated);
+        _qa.RunOnBubble(row.Bubble);
+        if (_tm is not null)
+        {
+            _ = WriteTmAsync(row, target);
+        }
+
+        MoveNext(skipConfirmed);
+    }
+
+    /// <summary>Moves the selection to the next qualifying bubble (SPEC §14.4).</summary>
+    public void MoveNext(bool skipConfirmed)
+    {
+        _segments.MoveNext(skipConfirmed);
+        SelectionMoved?.Invoke();
+        BubblesChanged?.Invoke();
+    }
+
+    public void ToggleLockSelected()
+    {
+        _segments.SelectedBubble?.ToggleLocked();
+        BubblesChanged?.Invoke();
+        SelectionMoved?.Invoke();
+    }
+
+    public void CopySourceToSelectedPart(int partIndex)
+    {
+        _segments.SelectedBubble?.CopySourceToPart(partIndex);
+        BubblesChanged?.Invoke();
+    }
+
+    private async Task WriteTmAsync(BubbleRowViewModel row, string target)
+    {
+        try
+        {
+            var lang = _tm!.SourceLanguage;
+            var prev = PreviousBubble(row.Bubble);
+            long? prevHash = prev is null
+                ? null
+                : TmHash.Compute(Normalizer.Normalize(prev.SourceText, lang));
+            await _tm.UpsertAsync(
+                row.Bubble.SourceText, target,
+                row.Bubble.Character, row.Bubble.Kind.ToString(),
+                _session.Document.Model.ChapterNumber, row.Bubble.Id, prevHash,
+                CancellationToken.None);
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"TM write failed: {ex.Message}");
+        }
+    }
+
+    private Bubble? PreviousBubble(Bubble current)
+    {
+        var bubbles = _session.Document.Model.Bubbles;
+        for (var i = 0; i < bubbles.Count; i++)
+        {
+            if (bubbles[i].Id == current.Id && i > 0)
+            {
+                return bubbles[i - 1];
+            }
+        }
+
+        return null;
+    }
+}

@@ -1,0 +1,14 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:PigComic.App.ViewModels"
+             xmlns:views="using:PigComic.App.Views"
+             x:Class="PigComic.App.Views.FunctionPaneView"
+             x:DataType="vm:MatchListViewModel">
+    <DockPanel>
+        <Border DockPanel.Dock="Bottom" Background="#0FFFFFFF" Padding="12" Margin="0,8,0,0">
+            <TextBlock Text="Kind · Character · Notes · LLM QA — land in M7"
+                       Foreground="Gray" FontSize="12" TextWrapping="Wrap"/>
+        </Border>
+        <views:MatchListView/>
+    </DockPanel>
+</UserControl>

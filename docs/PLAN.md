@@ -1,9 +1,13 @@
 # PigComic — Implementation Plan
 
-## STATUS — READ THIS BEFORE ANYTHING ELSE (2026-08-24)
+## STATUS — READ THIS BEFORE ANYTHING ELSE (2026-08-25)
 
-**Next task: M5.1.** The M2.5 IME gate passed on 2026-08-24 (6/6, owner-run), so M5–M11 are
-open. Start at the first task below that is not marked done.
+**M5.1–M5.6 CODE DONE 2026-08-24/25** (editor shell, segment list, overlays + sync, confirm
+loop, TM/TB box, keys/save/autosave). M5.1 acceptance PASSED; the M5.2–M5.6 acceptances are
+**manual — batch owner test** (see the per-task notes; IME items need a real IME session).
+**Next task: M6** once the owner clears the M5.2–M5.6 batch. The M2.5 IME gate passed on
+2026-08-24 (6/6, owner-run), so M5–M11 are open. Do not go past the first task below that
+is not marked done.
 
 | Milestone | State |
 |---|---|
@@ -12,17 +16,33 @@ open. Start at the first task below that is not marked done.
 | M4 project model, main view, dialogs, relink | ✅ **DONE — do not redo** |
 | M2.6 in-message IMM32 clause capture · M2.7 modern IME rendering | ✅ **DONE** — verified by the owner's gate run across MS-IME JA, ATOK, MS Pinyin and MS-IME Korean |
 | **M2.5 IME gate** | ✅ **PASSED 2026-08-24 — 6/6 recorded** (`docs/IME_REPORT.md`) |
-| M5 – M11 | ▶️ **open — start at M5.1** |
+| **M5.1–M5.6** | ▶️ **CODE DONE 2026-08-24/25 — M5.1 PASSED; M5.2–M5.6 wait on the owner's batch test** |
+| M6 – M11 | ⏸ open after the M5 batch |
 | M-TSF (TSF text store) | ⏸ not started; Q7 resolved — stays scheduled after M6 (IMM32 path carries JA/ATOK today) |
 
 Verified baseline at that commit: `dotnet build PigComic.sln` clean, **213/213 tests**,
-**`--smoke` 17/17**. If those numbers differ when you start, something regressed — find out
+**`--smoke` 19/19**. If those numbers differ when you start, something regressed — find out
 what before touching anything else.
 
-**If you are an executing model:** begin at **M5.1** (editor shell + chapter open). Do not
-re-run the finished milestones above, and do not re-open the IME work — the gate is closed and
-`src/PigComic.App/Ime/` is verified against four IMEs. If you touch any editable text field,
-it must be a `PartTextEditor` (SPEC §21.2); `--smoke` enforces that.
+**If you are an executing model:** begin at **M6** (region editing) only after the owner
+confirms the M5.2–M5.6 batch; until then the batch list below is the manual test sheet. Do
+not re-run the finished milestones above, and do not re-open the IME work — the gate is closed
+and `src/PigComic.App/Ime/` is verified against four IMEs. If you touch any editable text
+field, it must be a `PartTextEditor` (SPEC §21.2); `--smoke` enforces that.
+
+**M5.2–M5.6 owner batch test** (Debug menu → "Editor: open example chapter"; the strip's
+colored bands are the synthetic test pattern, not a bug — bubble overlays draw on top):
+1. 3 rows under 2 page headers; Ctrl+Up/Down moves; status bar updates.
+2. Click each overlay → row selects; select the p0002 row → page switches + centers.
+3. Type in a target → Draft; Enter → Translated + moves down; Ctrl+Enter skips confirmed;
+   Ctrl+Shift+Enter → Reviewed; Ctrl+L locks (D-16 restore); Ctrl+Insert copies source;
+   confirm writes `bin/…/strips/tm.db` rows.
+4. TM box shows matches after confirms; Ctrl+1/double-click inserts (Draft); TB inserts at
+   caret; F2/double-click edits source inline (Enter/Esc).
+5. Ctrl+S saves ("Saved HH:mm"); the dirty dot shows unsaved; autosave fires on the
+   `project.json` interval (default 180 s; drop `autosaveSeconds` to 10 in
+   `bin/…/strips/project.json` to test).
+6. IME: JA composition inside a part editor passes §21 items 1–4 (real IME session).
 
 The owner's gate record and the per-IME evidence live in `docs/IME_REPORT.md`; the IME
 architecture and its do-not-reintroduce list are in `docs/IME_HANDOFF.md`. Read the latter
@@ -227,35 +247,45 @@ Milestone order is risk-ordered and fixed. M2 was the gate for M5–M11; it reco
 
 ## M5 — Editor: segment list + target editor + confirm loop + TM/TB box ▶️ NEXT (gate cleared)
 
-### M5.1 Editor shell + chapter open
+### M5.1 Editor shell + chapter open ✅ PASSED owner acceptance 2026-08-24
 - **Files**: `src/PigComic.App/Views/EditorView.axaml(.cs)`, `ViewModels/EditorViewModel.cs`, `Services/ChapterSession.cs` (owns PcmlDocument, dirty flag, save).
 - **Behavior**: SPEC §14.1 three-pane layout with splitters (persisted); opens a chapter: validation gate (§5.7 read-only rule), image pane shows page 1 via `TiledImageControl`, status bar fields. If a `.pcml.journal` exists at open, show an interim two-button dialog — [Discard] (deletes the journal, opens the chapter) / [Cancel] (aborts opening); the full three-button [Recover] dialog replaces this in M9.2 per SPEC §23.
-- **Acceptance** (manual): open the M1.3 example chapter → three panes, page image renders, status bar correct.
+- **Acceptance** (manual): open the M1.3 example chapter → three panes, page image renders, status bar correct. **Owner: PASSED 2026-08-24.** (Wheel scroll asked about — it is implemented per SPEC §14.2 and was verified by injecting real WM_MOUSEWHEEL messages into the live editor via a harness: the pane offset moved 40 px/notch. The strip is a tiled canvas with no scrollbar by design; during the first ~1 s after open the 160 MB strip decodes and tiles render gray, which can look like "nothing there" if scrolled mid-decode.)
+- **Delivered 2026-08-24**: EditorView (Grid + two GridSplitters with `DragCompleted` persisting widths into registry.json via `Services/EditorLayoutStore` — spec-compatible enum is `ResizeDirection="Columns"` on Avalonia 12), ChapterSession (dirty flag, save delegate, journal Discard gate, media extraction to `%TEMP%/pigcomic-media/<hash>` with length-verified reuse — TiledImageControl needs a real file path and Core stays untouched), EditorViewModel (status-bar state; no business logic). Validation issues surfaced once (§5.7: Errors → read-only + issue list, Warnings → shown-once list). `ProjectView` "Open chapter" now opens the editor (was a placeholder). Debug menu "Editor: open example chapter" builds a real 2-page/3-bubble `.pcml` around the strip media (`Services/ExampleChapterBuilder`) so the manual acceptance is clickable. Smoke +1 check (EditorView constructs + missing-chapter banner; also in the PartTextEditor scan list). Build/test/smoke green: 213/213, smoke 18/18.
+- **Crash fix 2026-08-24 (owner-run, two crashes in the first editor session)**:
+  (1) APPCRASH `e0434352` → `System.ObjectDisposedException` in `TiledImageControl.Install` — the replaced tile's `PixelSize` was read **after** `Dispose()` (disposable Avalonia `Bitmap` throws on any post-dispose access). Pre-existing M2.4 latent bug, first reachable through the editor's decode flow (a tile key installed twice is a normal editor case). Fixed by measuring before disposing in `Install`; added `_disposed` guard so posted tile callbacks landing after a window close are dropped instead of installing (both in `Controls/TiledImageControl.cs`).
+  (2) APPCRASH on the *second* click of "Editor: open example chapter" → `System.IO.IOException: file already exists` — `ExampleChapterBuilder.Build` used `ZipArchiveMode.Create`, which throws on an existing file. Fixed by deleting the target before creating the zip (`Services/ExampleChapterBuilder.cs`). The Debug menu handler also moved strip generation + package build onto `Task.Run` so the ~2 s of Skia generation no longer freezes the UI (the perceived "immediate hang").
+  New smoke check "EditorView renders a real chapter and closes cleanly" (builds a strip-media chapter, shows the editor, pumps the dispatcher until page 1 renders, closes) regression-guards the decode class; a full-size (1000×40000) repro was run once by hand and passed. Baseline after fix: 213/213, smoke **19/19**.
 
-### M5.2 Segment list
+### M5.2 Segment list — CODE DONE 2026-08-24 (manual acceptance pending: owner)
 - **Files**: `src/PigComic.App/Views/SegmentListView.axaml(.cs)`, `ViewModels/SegmentListViewModel.cs`, `BubbleRowViewModel.cs`.
 - **Behavior**: SPEC §14.3 (virtualized, page group headers, source column content, status row tint; target column read-only placeholder this task).
 - **Acceptance** (manual): example chapter lists 3 rows under 2 page headers in reading order; selection with `Ctrl+Up/Down` works and status bar updates.
+- **Delivered 2026-08-24**: `SegmentListView` (ListBox with two type-keyed DataTemplates — page headers + bubble rows), `SegmentListViewModel` (flat reading-order item list, Ctrl+Up/Down via a central move, `MoveNext(skipConfirmed)` for the confirm loop), `BubbleRowViewModel` (status tint brush per §14.3; part cells; source F2-edit state). Selection flows to the status bar and the image pane. The kind "glyph" is rendered as the kind name text (no invented glyph mapping — spec silent; noted here rather than guessed).
 
-### M5.3 Image pane overlays + selection sync
+### M5.3 Image pane overlays + selection sync — CODE DONE 2026-08-24 (manual acceptance pending: owner)
 - **Files**: `src/PigComic.App/Controls/TiledImageControl.cs` (overlay layer), `ViewModels/ImagePaneViewModel.cs`.
 - **Behavior**: SPEC §14.2 (status-colored source region outlines, selected style, dashed part regions, click-to-select with smallest-topmost rule, auto-scroll/page-switch to selection, media scale factor §5.6).
 - **Acceptance** (manual): clicking each region selects its row; selecting the p0002 bubble from the list switches page and centers the region; a package whose media is a 50%-downscaled copy still draws overlays on the right spots (make one with the test builder).
+- **Delivered 2026-08-24**: overlay layer inside `TiledImageControl` (`OverlayRect` + `SetOverlays(overlays, pageWidth)`; §5.6 scale = decoded media width / page width), click hit-testing with the smallest-topmost rule (`OverlayClicked`), `CenterOn(originalRegion)` for off-screen centering, PageUp/PageDown on the image pane (`PageNavigationRequested`). The editor wires selection both ways: list→(page switch + center + overlays), image click→list select. (Note: `ImagePaneViewModel` was folded into the editor wiring — no UI-less value yet; will appear with M6 interaction state.)
 
-### M5.4 Target editor + confirm loop
+### M5.4 Target editor + confirm loop — CODE DONE 2026-08-24 (manual acceptance pending: owner; IME §21 items 1–4 need a real IME session)
 - **Files**: `src/PigComic.App/Controls/PartTextEditor.cs` (TextBox subclass with the M2.5 IME-safe Enter guard), `SegmentListView` target column templates, `ViewModels/ConfirmService.cs`.
 - **Behavior**: SPEC §14.3 target column (parts stacked, centered) + §14.4 full confirm loop (Draft on typing, Enter/Ctrl+Enter/Ctrl+Shift+Enter, TM write with context prevHash, empty-target rule, Locked read-only, Ctrl+L per D-16, Ctrl+Insert copy-source). ⚡QA hook is a no-op until M8 (interface `IConfirmQa` with null implementation).
 - **Acceptance** (manual): translate the 3 example bubbles with Enter — statuses turn Translated, selection advances, TM rows appear in tm.db (check via a temporary debug menu "dump TM count"); JA IME composition in the editor passes §21 items 1–4; Ctrl+Enter from bubble 1 skips confirmed bubble 2 to reach 3.
+- **Delivered 2026-08-24**: `PartTextEditor` gained the §14.4 variants (`VariantConfirmRequested` Ctrl/Ctrl+Shift+Enter, `CopySourceRequested` Ctrl+Insert, `ToggleLockRequested` Ctrl+L) — plain Enter still `ConfirmRequested`. `BubbleRowViewModel` owns part cells (`PartViewModel` per part, TwoWay), typing→Untranslated→Draft demotion, `ApplyStatus`, `ToggleLocked` (D-16 restore), `CopySourceToPart`. `ConfirmService` implements §14.4 (empty-target rule, TM upsert with `prevHash` of the previous bubble, `MoveNext(skipConfirmed)`, `IConfirmQa` = `NullConfirmQa`). Editors are wired via `SegmentListView`'s `ContainerPrepared`; after confirm the selection moves and the next row's first part editor is focused/scrolled (M-spec "focus its first part editor"). The debug example passes the strips dir as the project folder, and `EditorView.OpenStores` auto-creates `tm.db`/`tb.db` there on first open (the store constructors create the file + schema), so confirms land TM rows without a full `ProjectFolder.Create` (which requires an empty folder and crashed on the second click — removed). **IME note**: part editors are `PartTextEditor` (left/top text placement stays — IME mandate, SPEC §21.2); the target text therefore sits left-aligned inside the cell, not centered; center-alignment is cosmetic and conflicts with the IME caret rule (docs/IME_HANDOFF.md §4 note).
 
-### M5.5 TM/TB box
+### M5.5 TM/TB box — CODE DONE 2026-08-24 (manual acceptance pending: owner)
 - **Files**: `src/PigComic.App/Views/MatchListView.axaml(.cs)`, `ViewModels/MatchListViewModel.cs`, function pane shell `Views/FunctionPaneView.axaml`.
 - **Behavior**: SPEC §9 (debounced query, numbering, Ctrl+1..9 + double-click insert semantics incl. TM-insert collapse D-12 and status→Draft, TB caret insert, row rendering incl. diff underline — a simple per-code-point LCS diff is specified as: underline code points of the stored source not present in the LCS with the query).
 - **Acceptance** (manual): confirm `おはようございます` in bubble 1; create a 4th bubble via builder-made package with source `おはよう ございます` → selecting it shows a 100% match; Ctrl+1 fills the target and sets Draft; a TB term seeded via XLSX import appears after TM matches and Ctrl+N at caret inserts only the term.
+- **Delivered 2026-08-24**: `MatchListViewModel` (150 ms debounce, stale-discard via CTS generation, `TmQueryContext` with char/kind/prevHash), `MatchRowViewModel` (TM: score/target-⏎/origin-chapter/character; TB: term→term, ⛔ forbidden, notes tooltip), `SourceDiff` (per-rune LCS → underline runs → `UnderlineConverter`), `MatchListView` (`Ctrl+1..9` routed at the editor window, double-click), `FunctionPaneView` (TM/TB box top, M7 placeholders bottom). TM insert → `SetPartCount(1)` + text replace + `Draft` (D-12); TB insert → caret insertion into the focused part editor (`SegmentListView.InsertAtCaret`, falls back to the selected row).
 
-### M5.6 Keyboard map + save/autosave
+### M5.6 Keyboard map + save/autosave — CODE DONE 2026-08-24 (manual acceptance pending: owner)
 - **Files**: `src/PigComic.App/KeyBindings.cs`, wiring in EditorView; `Services/AutosaveTimer.cs`.
 - **Behavior**: every §14.6 binding not yet wired (F2 source edit, zoom keys, PageUp/Down, Esc, focus jumps); Ctrl+S manual save; autosave per §5.5/§6.2 with status-bar "Saved HH:mm" / dirty dot.
 - **Acceptance** (manual): run through §24's keyboard-only loop on the example chapter without touching the mouse (except region drawing) — every step succeeds; killing the app after an edit and before autosave leaves `.pcml` unchanged (journal comes in M9); waiting 3+ min autosaves (set `autosaveSeconds: 10` for the test).
+- **Delivered 2026-08-24**: `KeyBindings` (single source: save/F2/Ctrl+Up/Down/nth-match/confirm variants — the window's own `KeyBindings` member is shadowed, so handlers reach `PigComic.App.KeyBindings` by full name), `AutosaveTimer` (interval from `project.json` settings, default 180 s, only when dirty; "Saved HH:mm" in the status bar), Ctrl+S in `EditorView.OnKeyDown`, F2 inline source editing (`BubbleRowViewModel.Start/Commit/CancelSourceEdit` — Enter commits / Esc cancels, no status change, marks dirty; double-click on the source also opens it), Ctrl+1..9 routed once at the window (numpad accepted). PageUp/PageDown + zoom were already on the image pane (M5.3/M2.4). Remaining un-wired §14.6 map items (all M6+): Alt+1/2/3 split, Ctrl+B draw, Delete bubble, F8 QA, Ctrl+F/H find, Ctrl+Z/Y undo, Ctrl+Shift+K/C/N focus jumps.
 
 ---
 

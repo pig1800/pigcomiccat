@@ -5,9 +5,11 @@
 > flavor (coloured text + coloured active-clause background) instead of reverse-video. The
 > investigation and the remaining TSF track live in **`docs/IME_MODERN_COMPOSITION.md`**
 > (D-43/D-44). §4 below reflects the new code; §5 is the do-not-reintroduce list.
-> What still blocks M5 is the **owner's manual gate run** (`docs/IME_REPORT.md`).
+> **The M2.5 gate PASSED 6/6 on 2026-08-24** (MS-IME JA, ATOK, MS Pinyin, MS-IME KO); the
+> M5 editor (M5.1–M5.6, 2026-08-24/25) uses the same `PartTextEditor` unchanged — if you
+> touch any editor text field, keep it a `PartTextEditor` and re-run `--smoke`.
 
-**Last updated:** 2026-08-24 (PLAN M2.6 + M2.7) · **Repo:** `C:\PIG\src\pigcomic`
+**Last updated:** 2026-08-25 (M5 editor ships on the gate-verified IME stack) · **Repo:** `C:\PIG\src\pigcomic`
 
 Read this before touching anything under `src/PigComic.App/Ime/`. It records what the
 defect was, who is responsible for which piece today, and the environment traps that have
@@ -23,7 +25,7 @@ already cost two sessions.
 - **Now**: the project runs **Avalonia 12.1.1**, where the caret half is fixed upstream. The
   custom IME client survives only to add **conversion-clause highlighting**, which no
   Avalonia release provides.
-- **Build/tests/smoke**: green — 213/213 tests, `--smoke` 17/17.
+- **Build/tests/smoke**: green — 213/213 tests, `--smoke` 19/19.
 - **The M2.5 IME gate PASSED 6/6 on 2026-08-24** (owner-run: MS-IME Japanese, ATOK, MS Pinyin,
   MS-IME Korean). M5+ is unblocked. Before changing anything under `Ime/`, read §5 below —
   every entry there is a bug that has already been shipped and diagnosed once.

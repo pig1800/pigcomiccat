@@ -18,6 +18,7 @@ public sealed class TileDecoder : IDisposable
     private SKBitmap? _full;
     private SKCodec? _codec;
     private SKFileStream? _stream;
+    private bool _disposed;
 
     /// <summary>Number of full-image decodes performed (0 when region decode works).</summary>
     public int FullDecodeCount { get; private set; }
@@ -40,6 +41,11 @@ public sealed class TileDecoder : IDisposable
 
     private void EnsureCodec()
     {
+        if (_disposed)
+        {
+            throw new ObjectDisposedException(nameof(TileDecoder));
+        }
+
         if (_codec is not null)
         {
             return;
@@ -84,58 +90,68 @@ public sealed class TileDecoder : IDisposable
         return surface.Snapshot();
     }
 
-    /// <summary>
-    /// Always-sliced region path: keeps a lazy full decode and crops from it.
-    /// (Region decode attempts are logged; see DECISIONS.md.)
+/// <summary>
+    /// Always-sliced region path: keeps a lazy full decode and crops from it
+    /// **under the decoder lock** so a concurrent Dispose (page switch) cannot
+    /// free the native bitmap mid-draw (AccessViolation). Returns an independently
+    /// owned SKImage snapshot.
     /// </summary>
     private SKImage RegionImage(int x, int y, int w, int h, CancellationToken ct)
     {
         ct.ThrowIfCancellationRequested();
-        var src = FullImage(ct);
-        using var surface = SKSurface.Create(new SKImageInfo(w, h, SKColorType.Rgba8888, SKAlphaType.Premul));
-        surface.Canvas.DrawBitmap(src, new SKRect(x, y, x + w, y + h), new SKRect(0, 0, w, h));
-        return surface.Snapshot();
-    }
-
-    /// <summary>First full decode is done once (spec-bounded: RGBA ≤ 256 MB).</summary>
-    private SKBitmap FullImage(CancellationToken ct)
-    {
-        ct.ThrowIfCancellationRequested();
         lock (_sync)
         {
-            if (_full is not null)
+            if (_disposed)
             {
-                return _full;
+                throw new ObjectDisposedException(nameof(TileDecoder));
             }
 
-            EnsureCodec();
-            var info = _codec!.Info;
-            long rgba = (long)info.Width * info.Height * 4;
-            if (rgba > 256L * 1024 * 1024)
-            {
-                throw new InvalidOperationException(
-                    $"Image too large for the spike fallback path ({rgba} bytes RGBA); " +
-                    "a true subset decoder is required.");
-            }
+            var src = FullImageLocked(ct);
+            using var surface = SKSurface.Create(new SKImageInfo(w, h, SKColorType.Rgba8888, SKAlphaType.Premul));
+            // DrawBitmap reads the shared _full — must stay inside the lock so
+            // Dispose cannot free it until the copy is done.
+            surface.Canvas.DrawBitmap(src, new SKRect(x, y, x + w, y + h), new SKRect(0, 0, w, h));
+            return surface.Snapshot();
+        }
+    }
 
-            var bmp = new SKBitmap(new SKImageInfo(info.Width, info.Height, SKColorType.Rgba8888, SKAlphaType.Premul));
-            var result = _codec.GetPixels(bmp.Info, bmp.GetPixels());
-            if (result != SKCodecResult.Success)
-            {
-                bmp.Dispose();
-                throw new InvalidDataException($"Decode failed: {result}.");
-            }
-
-            _full = bmp;
-            FullDecodeCount++;
+    /// <summary>First full decode is done once (spec-bounded: RGBA ≤ 256 MB). Caller holds <see cref="_sync"/>.</summary>
+    private SKBitmap FullImageLocked(CancellationToken ct)
+    {
+        ct.ThrowIfCancellationRequested();
+        if (_full is not null)
+        {
             return _full;
         }
+
+        EnsureCodec();
+        var info = _codec!.Info;
+        long rgba = (long)info.Width * info.Height * 4;
+        if (rgba > 256L * 1024 * 1024)
+        {
+            throw new InvalidOperationException(
+                $"Image too large for the spike fallback path ({rgba} bytes RGBA); " +
+                "a true subset decoder is required.");
+        }
+
+        var bmp = new SKBitmap(new SKImageInfo(info.Width, info.Height, SKColorType.Rgba8888, SKAlphaType.Premul));
+        var result = _codec.GetPixels(bmp.Info, bmp.GetPixels());
+        if (result != SKCodecResult.Success)
+        {
+            bmp.Dispose();
+            throw new InvalidDataException($"Decode failed: {result}.");
+        }
+
+        _full = bmp;
+        FullDecodeCount++;
+        return _full;
     }
 
     public void Dispose()
     {
         lock (_sync)
         {
+            _disposed = true;
             _full?.Dispose();
             _full = null;
             _codec?.Dispose();

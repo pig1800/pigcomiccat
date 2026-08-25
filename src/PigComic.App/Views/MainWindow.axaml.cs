@@ -1,8 +1,10 @@
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
+using PigComic.App.Rendering;
 using PigComic.App.Services;
 using PigComic.App.ViewModels;
+using PigComic.App.Views;
 
 namespace PigComic.App.Views;
 
@@ -22,6 +24,25 @@ public partial class MainWindow : Window
     private void OnSpikeClick(object? sender, RoutedEventArgs e) => new SpikeWindow().Show();
 
     private void OnImeClick(object? sender, RoutedEventArgs e) => new ImeTestWindow().Show();
+
+    /// <summary>Debug tool: builds a real example chapter (strip media) and opens it in the editor.</summary>
+    private async void OnExampleChapterClick(object? sender, RoutedEventArgs e)
+    {
+        var dir = Path.Combine(AppContext.BaseDirectory, "strips");
+        // Generation writes two 1000×40000 strips — keep it off the UI thread so the
+        // window doesn't freeze for ~2 s, then construct/show the editor on the UI thread.
+        // The editor's OpenStores auto-creates tm.db/tb.db in `dir` on first open, so
+        // confirms land TM rows (M5.4 acceptance) without a full project folder.
+        var pcml = await Task.Run(() =>
+        {
+            StripImageGenerator.Generate(dir);
+            return ExampleChapterBuilder.Build(
+                dir, StripImageGenerator.DefaultWidth, StripImageGenerator.DefaultHeight,
+                Path.Combine(dir, "strip.jpg"), Path.Combine(dir, "strip.png"));
+        }).ConfigureAwait(true);
+        var editor = new EditorView(pcml, dir);
+        editor.Show();
+    }
 
     private async void OnOpenClick(object? sender, RoutedEventArgs e)
     {

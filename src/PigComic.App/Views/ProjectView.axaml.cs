@@ -120,18 +120,15 @@ public partial class ProjectView : Avalonia.Controls.Window
         }
     }
 
-    private async void OnOpenChapterClick(object? sender, RoutedEventArgs e)
+    private void OnOpenChapterClick(object? sender, RoutedEventArgs e)
     {
         if (ChapterList.SelectedItem is not ChapterRow row)
         {
             return;
         }
 
-        await ContentDialog.AskAsync(this, "Open chapter",
-            row.ExistsText == "yes"
-                ? $"Would open {row.FileName} — the editor ships in M5."
-                : $"File missing: {row.Path}\nUse the Relink flow to restore it.",
-            "OK", null);
+        var editor = new EditorView(row.Path, _folder);
+        editor.Show();
     }
 
     private void OnMoveUpClick(object? sender, RoutedEventArgs e)

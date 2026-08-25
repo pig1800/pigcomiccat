@@ -52,6 +52,15 @@ public class PartTextEditor : TextBox
 
     public event EventHandler? ConfirmRequested;
 
+    /// <summary>Ctrl+Enter / Ctrl+Shift+Enter confirmation variants (SPEC §14.4).</summary>
+    public event EventHandler<ConfirmVariant>? VariantConfirmRequested;
+
+    /// <summary>Ctrl+Insert: copy the bubble source into this part (SPEC §14.4).</summary>
+    public event EventHandler? CopySourceRequested;
+
+    /// <summary>Ctrl+L: toggle Locked (SPEC §14.4 / D-16).</summary>
+    public event EventHandler? ToggleLockRequested;
+
     /// <summary>Checklist instrumentation: every confirm fired while composing would show here.</summary>
     public long ConfirmCount { get; private set; }
 
@@ -169,7 +178,10 @@ public class PartTextEditor : TextBox
     {
         if (e.Key is Key.Enter or Key.Return)
         {
-            if (MultiLine && e.KeyModifiers.HasFlag(KeyModifiers.Shift))
+            var ctrl = e.KeyModifiers.HasFlag(KeyModifiers.Control);
+            var shift = e.KeyModifiers.HasFlag(KeyModifiers.Shift);
+
+            if (MultiLine && shift && !ctrl)
             {
                 base.OnKeyDown(e);
                 e.Handled = true;
@@ -187,14 +199,45 @@ public class PartTextEditor : TextBox
             {
                 e.Handled = true;
                 ConfirmCount++;
-                ConfirmRequested?.Invoke(this, EventArgs.Empty);
+                if (ctrl)
+                {
+                    VariantConfirmRequested?.Invoke(this, shift ? ConfirmVariant.CtrlShiftEnter : ConfirmVariant.CtrlEnter);
+                }
+                else
+                {
+                    ConfirmRequested?.Invoke(this, EventArgs.Empty);
+                }
             }
 
             return;
         }
 
+        if (!e.Handled && e.KeyModifiers.HasFlag(KeyModifiers.Control))
+        {
+            switch (e.Key)
+            {
+                case Key.Insert:
+                    e.Handled = true;
+                    CopySourceRequested?.Invoke(this, EventArgs.Empty);
+                    return;
+
+                case Key.L when !e.KeyModifiers.HasFlag(KeyModifiers.Alt):
+                    e.Handled = true;
+                    ToggleLockRequested?.Invoke(this, EventArgs.Empty);
+                    return;
+            }
+        }
+
         base.OnKeyDown(e);
     }
+}
+
+/// <summary>Confirmation variants (SPEC §14.4).</summary>
+public enum ConfirmVariant
+{
+    Enter,
+    CtrlEnter,
+    CtrlShiftEnter,
 }
 
 public static class PartTextEditorExtensions

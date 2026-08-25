@@ -7,10 +7,23 @@ using Avalonia.Media.Imaging;
 using Avalonia.Platform;
 using Avalonia.Threading;
 using PigComic.App.Rendering;
+using PigComic.App.Services;
+using PigComic.Core.Domain;
 using PigComic.Core.Imaging;
 using SkiaSharp;
 
 namespace PigComic.App.Controls;
+
+/// <summary>
+/// One drawable overlay rectangle (M5.3). <see cref="Region"/> is in ORIGINAL
+/// image pixel space (SPEC §5.6); the control multiplies by the media scale.
+/// </summary>
+public sealed record OverlayRect(
+    string BubbleId,
+    Rect Region,
+    BubbleStatus Status,
+    bool IsSelected,
+    IReadOnlyList<Rect>? PartRegions);
 
 /// <summary>
 /// M2.4 tiled image control (SPEC §20 spike): wheel scroll, Ctrl+wheel zoom
@@ -19,6 +32,9 @@ namespace PigComic.App.Controls;
 /// fallback, FPS overlay (frame-time ring buffer). Tiles arrive via
 /// <see cref="DecodeQueue"/>, are converted once to WriteableBitmap and kept in
 /// a byte-budgeted cache. Never a full-size Avalonia Bitmap.
+///
+/// M5.3: also draws bubble overlays (SPEC §14.2) — status-colored outlines,
+/// selected fill, dashed part regions — and raises clicks in original space.
 /// </summary>
 public sealed class TiledImageControl : Control
 {
@@ -36,6 +52,7 @@ public sealed class TiledImageControl : Control
     private string _pageId = "init";
     private long _pageTick;
     private long _budgetUsed;
+    private bool _disposed;
 
     private readonly double[] _frameMs = new double[120];
     private int _frameIndex;
@@ -53,6 +70,45 @@ public sealed class TiledImageControl : Control
     public bool HasImage => _decoder is not null;
     public double Zoom => _zoom;
     public double Fps => _fps;
+
+    /// <summary>Actual media width of the current image (used for §5.6 scale).</summary>
+    public int ImageWidth => _decoder?.ImageWidth ?? 0;
+
+    /// <summary>Raised when a bubble overlay is clicked (SPEC §14.2 smallest-topmost rule).</summary>
+    public event Action<string>? OverlayClicked;
+
+    /// <summary>Raised by PageUp/PageDown when the image pane has focus (SPEC §14.2).</summary>
+    public event Action<int>? PageNavigationRequested;
+
+    private List<OverlayRect> _overlays = [];
+    private double _overlayScale = 1.0;
+    private double _overlayPageWidth = 1.0;
+
+    /// <summary>
+    /// Sets the bubble overlays for the current page; rects are in ORIGINAL
+    /// pixel space and are drawn scaled by mediaWidth/pageWidth (§5.6).
+    /// </summary>
+    public void SetOverlays(IReadOnlyList<OverlayRect> overlays, double pageWidth)
+    {
+        _overlays = [.. overlays];
+        _overlayPageWidth = pageWidth > 0 ? pageWidth : ImageWidth > 0 ? ImageWidth : 1.0;
+        var mediaWidth = ImageWidth;
+        _overlayScale = mediaWidth > 0 ? mediaWidth / _overlayPageWidth : 1.0;
+        InvalidateVisual();
+    }
+
+    /// <summary>Original-space → control-screen transform for overlay math.</summary>
+    private (double X, double Y, double W, double H) OverlayScreen(double x, double y, double w, double h)
+    {
+        var s = _overlayScale * _zoom;
+        return (x * s - _offsetX, y * s - _offsetY, w * s, h * s);
+    }
+
+    private Rect OverlayScreen(Rect r)
+    {
+        var (x, y, w, h) = OverlayScreen(r.X, r.Y, r.Width, r.Height);
+        return new Rect(x, y, w, h);
+    }
 
     public void SetImage(string path)
     {
@@ -95,7 +151,7 @@ public sealed class TiledImageControl : Control
 
     private void OnTileReady((string PageId, TileKey Key, SKImage Image) t)
     {
-        if (t.PageId != _pageId)
+        if (t.PageId != _pageId || _disposed)
         {
             t.Image.Dispose();
             return;
@@ -129,8 +185,11 @@ public sealed class TiledImageControl : Control
         var size = (long)wb.PixelSize.Width * wb.PixelSize.Height * 4;
         if (_tiles.Remove(key, out var old))
         {
+            // Read the old bitmap's metrics BEFORE disposing it — a disposable
+            // Avalonia Bitmap throws ObjectDisposedException on any access.
+            var oldBudget = (long)old.PixelSize.Width * old.PixelSize.Height * 4;
             old.Dispose();
-            _budgetUsed -= (long)old.PixelSize.Width * old.PixelSize.Height * 4;
+            _budgetUsed -= oldBudget;
         }
 
         _tiles[key] = wb;
@@ -193,6 +252,51 @@ public sealed class TiledImageControl : Control
         return wb;
     }
 
+    protected override void OnPointerPressed(PointerPressedEventArgs e)
+    {
+        base.OnPointerPressed(e);
+        if (_decoder is null || _overlays.Count == 0)
+        {
+            return;
+        }
+
+        var p = e.GetPosition(this);
+        // Screen → ORIGINAL space (§5.6): undo overlay scale + zoom + offset.
+        var s = _overlayScale * _zoom;
+        if (s <= 0)
+        {
+            return;
+        }
+
+        var ox = (p.X + _offsetX) / s;
+        var oy = (p.Y + _offsetY) / s;
+
+        OverlayRect? best = null;
+        double bestArea = double.MaxValue;
+        foreach (var overlay in _overlays)
+        {
+            var r = overlay.Region;
+            if (ox < r.X || oy < r.Y || ox > r.X + r.Width || oy > r.Y + r.Height)
+            {
+                continue;
+            }
+
+            // Smallest region wins; ties keep the last (topmost = drawn later).
+            var area = r.Width * r.Height;
+            if (area <= bestArea)
+            {
+                bestArea = area;
+                best = overlay;
+            }
+        }
+
+        if (best is not null)
+        {
+            OverlayClicked?.Invoke(best.BubbleId);
+            e.Handled = true;
+        }
+    }
+
     protected override void OnPointerWheelChanged(PointerWheelEventArgs e)
     {
         base.OnPointerWheelChanged(e);
@@ -246,7 +350,55 @@ public sealed class TiledImageControl : Control
                 FitWidth();
                 e.Handled = true;
                 break;
+            case Key.PageUp:
+                PageNavigationRequested?.Invoke(-1);
+                e.Handled = true;
+                break;
+            case Key.PageDown:
+                PageNavigationRequested?.Invoke(1);
+                e.Handled = true;
+                break;
         }
+    }
+
+    /// <summary>
+    /// Centers the given ORIGINAL-space region if it is off-screen (SPEC §14.2:
+    /// selecting a row auto-scrolls/centers the region; if off-screen vertically,
+    /// center it; horizontal is kept unless the region is off-side).
+    /// </summary>
+    public void CenterOn(Rect originalRegion)
+    {
+        if (_decoder is null || Bounds.Width <= 0 || Bounds.Height <= 0)
+        {
+            return;
+        }
+
+        var screen = OverlayScreen(originalRegion);
+        var margin = 16.0;
+        var insideX = screen.X >= -margin && screen.X + screen.Width <= Bounds.Width + margin;
+        var insideY = screen.Y >= -margin && screen.Y + screen.Height <= Bounds.Height + margin;
+
+        if (insideX && insideY)
+        {
+            return;
+        }
+
+        var maxX = Math.Max(0, _decoder.ImageWidth * _zoom - Bounds.Width);
+        var maxY = Math.Max(0, _decoder.ImageHeight * _zoom - Bounds.Height);
+
+        if (!insideY)
+        {
+            var centerY = originalRegion.Y * _overlayScale * _zoom + (originalRegion.Height * _overlayScale * _zoom) / 2;
+            _offsetY = Math.Clamp(centerY - Bounds.Height / 2, 0, maxY);
+        }
+
+        if (!insideX)
+        {
+            var centerX = originalRegion.X * _overlayScale * _zoom + (originalRegion.Width * _overlayScale * _zoom) / 2;
+            _offsetX = Math.Clamp(centerX - Bounds.Width / 2, 0, maxX);
+        }
+
+        InvalidateVisual();
     }
 
     public override void Render(DrawingContext context)
@@ -297,7 +449,49 @@ public sealed class TiledImageControl : Control
             _queue.Submit(_pageId, tile, Priority(tile), _ => decoder.DecodeTile(tile, CancellationToken.None));
         }
 
+        DrawOverlays(context);
         DrawFps(context);
+    }
+
+    /// <summary>SPEC §14.2 overlay layer: status outlines, selected fill + dashed parts.</summary>
+    private void DrawOverlays(DrawingContext context)
+    {
+        if (_decoder is null || _overlays.Count == 0)
+        {
+            return;
+        }
+
+        foreach (var overlay in _overlays)
+        {
+            var rect = OverlayScreen(overlay.Region);
+            if (rect.X >= Bounds.Width || rect.Y >= Bounds.Height ||
+                rect.X + rect.Width <= 0 || rect.Y + rect.Height <= 0)
+            {
+                continue;
+            }
+
+            var color = UiPalette.StatusColor(overlay.Status);
+            var outline = new Pen(new SolidColorBrush(color), overlay.IsSelected ? 3 : 2);
+            if (overlay.IsSelected)
+            {
+                context.FillRectangle(new SolidColorBrush(color, 0.15f), rect);
+            }
+
+            context.DrawRectangle(null, outline, rect);
+
+            if (overlay.IsSelected && overlay.PartRegions is { } parts)
+            {
+                var dashed = new Pen(new SolidColorBrush(color), 1, new DashStyle([3, 2], 0));
+                foreach (var part in parts)
+                {
+                    var pr = OverlayScreen(part);
+                    if (pr.Width > 0 && pr.Height > 0)
+                    {
+                        context.DrawRectangle(null, dashed, pr);
+                    }
+                }
+            }
+        }
     }
 
     private (double X, double Y, double W, double H) TileDisplayRect(TileKey tile, double zoom, int level)
@@ -370,6 +564,12 @@ public sealed class TiledImageControl : Control
 
     public void Dispose()
     {
+        if (_disposed)
+        {
+            return;
+        }
+
+        _disposed = true;
         DropAllTiles();
         _queue.Dispose();
         _decoder?.Dispose();
