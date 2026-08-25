@@ -664,7 +664,7 @@ Test table (normative; `tcyMaxDigitRun=3`, lang=ja unless noted):
 - Request assembly: system prompt = `llm-qa-prompt.txt`; user content = language pair, character sheet (master-list rows for characters appearing in scope: name, gender, age, pronoun, comments), current memory (fenced section), and the bubble list as JSON `[{id, order, kind, character, source, target}]`.
 - Response contract — the model must return **only** a JSON object:
   ```json
-  { "comments": [ { "id": "p0001-b0002", "comment": "..." } ], "memory": "full replacement text (optional)" }
+  { "comments": [ { "id": "b0002", "comment": "..." } ], "memory": "full replacement text (optional)" }
   ```
   Comments are in the target language, only for bubbles deserving literary remarks (mistranslation, tone, character voice, consistency); omitted bubbles are untouched. `memory`, when present, **fully replaces** `llm-qa-memory.md`; when absent, memory is unchanged.
 - Response parsing: extract the first `{`…matching-`}` JSON object; unknown bubble ids ignored; each comment written to `bubble.llmComment` (overwrites previous — D-04); memory applied per the cap rule. Malformed JSON → error toast, nothing written, memory untouched.

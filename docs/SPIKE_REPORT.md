@@ -11,7 +11,7 @@ overlay (yellow, top-left) and Task Manager / Perf counter for memory.
 ## Spike findings (2026-08-22)
 
 - **Limit one:** the decoded image lives as one full RGBA `SKBitmap` per open
-  page (160 MB for 1000×40000) inside `TileDecoder`, tiles are sliced from it.
+  image (160 MB for 1000×40000) inside `TileDecoder`, tiles are sliced from it.
   This is the **spec-sanctioned fallback** (see DECISIONS D-37): SkiaSharp 3.116
   returns `Unimplemented` for JPEG subset decode (`SKCodecOptions.Subset`) and
   for PNG `StartScanlineDecode`/scanline reads on Windows, so true region decode

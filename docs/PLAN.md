@@ -31,7 +31,7 @@ Verified baseline at that commit: `dotnet build PigComic.sln` clean, **213/213 t
 **`--smoke` 19/19**. If those numbers differ when you start, something regressed — find out
 what before touching anything else.
 
-**If you are an executing model:** begin at **M6** (region editing) only after the owner
+**If you are an executing model:** begin at **M6** (marker editing) only after the owner
 confirms the M5.2–M5.6 batch; until then the batch list below is the manual test sheet. Do
 not re-run the finished milestones above, and do not re-open the IME work — the gate is closed
 and `src/PigComic.App/Ime/` is verified against four IMEs. If you touch any editable text
@@ -39,8 +39,8 @@ field, it must be a `PartTextEditor` (SPEC §21.2); `--smoke` enforces that.
 
 **M5.2–M5.6 owner batch test** (Debug menu → "Editor: open example chapter"; the strip's
 colored bands are the synthetic test pattern, not a bug — bubble overlays draw on top):
-1. 3 rows under 2 page headers; Ctrl+Up/Down moves; status bar updates.
-2. Click each overlay → row selects; select the p0002 row → page switches + centers.
+1. 3 rows in one flat reading-order list (no page headers, D-49); Ctrl+Up/Down moves; status bar updates.
+2. Click each cross → row selects; select a bubble whose marker is on the second strip image → the strip scrolls to it (no page switch, D-49).
 3. Type in a target → Draft; Enter → Translated + moves down; Ctrl+Enter skips confirmed;
    Ctrl+Shift+Enter → Reviewed; Ctrl+L locks (D-16 restore); Ctrl+Insert copies source;
    confirm writes `bin/…/strips/tm.db` rows.
@@ -257,7 +257,7 @@ Milestone order is risk-ordered and fixed. M2 was the gate for M5–M11; it reco
 ### M5.1 Editor shell + chapter open ✅ PASSED owner acceptance 2026-08-24
 - **Files**: `src/PigComic.App/Views/EditorView.axaml(.cs)`, `ViewModels/EditorViewModel.cs`, `Services/ChapterSession.cs` (owns PcmlDocument, dirty flag, save).
 - **Behavior**: SPEC §14.1 three-pane layout with splitters (persisted); opens a chapter: validation gate (§5.7 read-only rule), image pane shows the chapter strip via `TiledImageControl`, status bar fields. If a `.pcml.journal` exists at open, show an interim two-button dialog — [Discard] (deletes the journal, opens the chapter) / [Cancel] (aborts opening); the full three-button [Recover] dialog replaces this in M9.2 per SPEC §23.
-- **Acceptance** (manual): open the M1.3 example chapter → three panes, page image renders, status bar correct. **Owner: PASSED 2026-08-24.** (Wheel scroll asked about — it is implemented per SPEC §14.2 and was verified by injecting real WM_MOUSEWHEEL messages into the live editor via a harness: the pane offset moved 40 px/notch. The strip is a tiled canvas with no scrollbar by design; during the first ~1 s after open the 160 MB strip decodes and tiles render gray, which can look like "nothing there" if scrolled mid-decode.)
+- **Acceptance** (manual): open the M1.3 example chapter → three panes, the chapter strip renders, status bar correct. **Owner: PASSED 2026-08-24.** (Wheel scroll asked about — it is implemented per SPEC §14.2 and was verified by injecting real WM_MOUSEWHEEL messages into the live editor via a harness: the pane offset moved 40 px/notch. The strip is a tiled canvas with no scrollbar by design; during the first ~1 s after open the 160 MB strip decodes and tiles render gray, which can look like "nothing there" if scrolled mid-decode.)
 - **Delivered 2026-08-24**: EditorView (Grid + two GridSplitters with `DragCompleted` persisting widths into registry.json via `Services/EditorLayoutStore` — spec-compatible enum is `ResizeDirection="Columns"` on Avalonia 12), ChapterSession (dirty flag, save delegate, journal Discard gate, media extraction to `%TEMP%/pigcomic-media/<hash>` with length-verified reuse — TiledImageControl needs a real file path and Core stays untouched), EditorViewModel (status-bar state; no business logic). Validation issues surfaced once (§5.7: Errors → read-only + issue list, Warnings → shown-once list). `ProjectView` "Open chapter" now opens the editor (was a placeholder). Debug menu "Editor: open example chapter" builds a real 2-page/3-bubble `.pcml` around the strip media (`Services/ExampleChapterBuilder`) so the manual acceptance is clickable. Smoke +1 check (EditorView constructs + missing-chapter banner; also in the PartTextEditor scan list). Build/test/smoke green: 213/213, smoke 18/18.
 - **Crash fix 2026-08-24 (owner-run, two crashes in the first editor session)**:
   (1) APPCRASH `e0434352` → `System.ObjectDisposedException` in `TiledImageControl.Install` — the replaced tile's `PixelSize` was read **after** `Dispose()` (disposable Avalonia `Bitmap` throws on any post-dispose access). Pre-existing M2.4 latent bug, first reachable through the editor's decode flow (a tile key installed twice is a normal editor case). Fixed by measuring before disposing in `Install`; added `_disposed` guard so posted tile callbacks landing after a window close are dropped instead of installing (both in `Controls/TiledImageControl.cs`).
@@ -267,7 +267,7 @@ Milestone order is risk-ordered and fixed. M2 was the gate for M5–M11; it reco
 ### M5.2 Segment list — CODE DONE 2026-08-24 (manual acceptance pending: owner)
 - **Files**: `src/PigComic.App/Views/SegmentListView.axaml(.cs)`, `ViewModels/SegmentListViewModel.cs`, `BubbleRowViewModel.cs`.
 - **Behavior**: SPEC §14.3 (virtualized, one flat reading-order list with no page headers, source column content, status row tint; target column read-only placeholder this task).
-- **Acceptance** (manual): example chapter lists 3 rows under 2 page headers in reading order; selection with `Ctrl+Up/Down` works and status bar updates.
+- **Acceptance** (manual): example chapter lists 3 rows in one flat reading-order list (no page headers, D-49); selection with `Ctrl+Up/Down` works and status bar updates.
 - **Delivered 2026-08-24**: `SegmentListView` (ListBox with two type-keyed DataTemplates — page headers + bubble rows), `SegmentListViewModel` (flat reading-order item list, Ctrl+Up/Down via a central move, `MoveNext(skipConfirmed)` for the confirm loop), `BubbleRowViewModel` (status tint brush per §14.3; part cells; source F2-edit state). Selection flows to the status bar and the image pane. The kind "glyph" is rendered as the kind name text (no invented glyph mapping — spec silent; noted here rather than guessed).
 
 ### M5.3 Image pane overlays + selection sync — CODE DONE 2026-08-24 (manual acceptance pending: owner)

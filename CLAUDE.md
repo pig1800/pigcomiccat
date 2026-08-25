@@ -32,7 +32,7 @@ Work strictly from the task list in `docs/PLAN.md`, one task per session, in ord
   path; Core is never touched for media). `EditorLayoutStore` persists splitter widths into
   the §6.4 `registry.json` (merge-preserving).
 - **Selection plumbing**: `SegmentListViewModel` holds the flat reading-order item list
-  (page headers + `BubbleRowViewModel`s); `BubbleRowViewModel` wraps the Core `Bubble` and
+  (`BubbleRowViewModel`s only — there are no page headers, D-49); `BubbleRowViewModel` wraps the Core `Bubble` and
   owns the `PartViewModel` cells, Draft-on-typing, lock (D-16), source F2-edit. `ConfirmService`
   implements §14.4 (Enter/Ctrl+Enter/Ctrl+Shift+Enter, empty-target rule, TM upsert with
   prevHash, `IConfirmQa` = `NullConfirmQa` until M8). `MatchListViewModel` is the §9 box
@@ -42,7 +42,7 @@ Work strictly from the task list in `docs/PLAN.md`, one task per session, in ord
   - `TiledImageControl.Install` must read a replaced bitmap's `PixelSize` **before** disposing
     it (Avalonia `Bitmap` throws `ObjectDisposedException` on post-dispose access).
   - `TileDecoder` does the whole region crop **inside `_sync`** and checks `_disposed` first;
-    the shared `_full` SKBitmap must never be read outside the lock, or a page-switch
+    the shared `_full` SKBitmap must never be read outside the lock, or a strip reload
     `Dispose` frees native memory mid-`DrawBitmap` (`AccessViolationException`).
   - Debug tool `ExampleChapterBuilder.Build` deletes an existing output before zipping
     (`ZipArchiveMode.Create` throws on an existing file). Never call `ProjectFolder.Create`
@@ -77,7 +77,7 @@ The project moved from Avalonia 11 to 12; older snippets, blog posts, and your o
 - TM writes happen only on confirm; never auto-fill or auto-propagate a translation (repetitions are offered via popup only, SPEC §10).
 - No LLM pretranslation feature. LLM = on-demand QA comments only (SPEC §13) via `ILlmClient`; the app must fully work with the stub.
 - M2 was a gate: it PASSED 6/6 on 2026-08-24 (`docs/IME_REPORT.md`). Do not reopen the IME stack casually — read `docs/IME_HANDOFF.md` §5 first; it lists the traps that have already cost three sessions.
-- Never load a full-size page image into an Avalonia `Bitmap` (tiled rendering, SPEC §20).
+- Never load a full-size strip image into an Avalonia `Bitmap` (tiled rendering, SPEC §20).
 - Don't weaken/delete existing tests to make a task pass. `dotnet build PigComic.sln` + `dotnet test` must be green at the end of every task.
 - `PigComic.sln` must build without any sibling repos; `PigComic.Full.sln` (adds the PigTranslate adapter) may require them.
 
