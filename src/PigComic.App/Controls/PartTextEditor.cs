@@ -287,6 +287,24 @@ public class PartTextEditor : TextBox
             }
         }
 
+        // D-60: Left at pos 0 and Right at pos n must never leave the textbox — swallow them
+        // so Avalonia's focus traversal does not kick in.
+        if (!e.Handled && e.KeyModifiers == KeyModifiers.None)
+        {
+            var len = Text?.Length ?? 0;
+            if (e.Key == Key.Left && CaretIndex == 0)
+            {
+                e.Handled = true;
+                return;
+            }
+
+            if (e.Key == Key.Right && CaretIndex == len)
+            {
+                e.Handled = true;
+                return;
+            }
+        }
+
         base.OnKeyDown(e);
     }
 }
