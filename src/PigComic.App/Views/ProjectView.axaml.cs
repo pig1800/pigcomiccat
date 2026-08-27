@@ -60,8 +60,13 @@ public partial class ProjectView : Avalonia.Controls.Window
         _folder = Path.GetDirectoryName(projectJsonPath) ?? "";
         ChapterList.SelectionChanged += (_, _) => UpdateButtons();
         ExchangeButton.Click += OnExchangeClick;
+        CharactersButton.Click += OnCharactersClick;
         Reload();
     }
+
+    /// <summary>M7.1: the master character editor (SPEC §16) is reachable from the project view.</summary>
+    private void OnCharactersClick(object? sender, RoutedEventArgs e)
+        => new CharacterMasterWindow(_folder).Show();
 
     private void Reload()
     {

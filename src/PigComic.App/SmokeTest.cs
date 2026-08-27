@@ -9,6 +9,7 @@ using PigComic.App.Rendering;
 using PigComic.App.Services;
 using PigComic.App.Views;
 using PigComic.Core.Domain;
+using PigComic.Core.Project;
 
 namespace PigComic.App;
 
@@ -329,6 +330,8 @@ internal static class SmokeTest
         Check("RelinkDialog constructs", () => new RelinkDialog(["a.pcml"]) is not null);
         Check("ImeTestWindow constructs", () => new ImeTestWindow() is not null);
         Check("SpikeWindow constructs", () => new SpikeWindow() is not null);
+        Check("CharacterMasterWindow constructs",
+            () => new CharacterMasterWindow(Path.Combine(Path.GetTempPath(), "pigcomic-smoke-chars")) is not null);
         Check("EditorView constructs (missing chapter degrades to an error banner)",
             () =>
             {
@@ -421,9 +424,10 @@ internal static class SmokeTest
                 // have toggled off.
                 var skipPlumbingOk = segments?.Confirm?.SkipConfirmed == vm?.SkipConfirmed;
 
-                // M5.5: the function pane hosts the match-list VM once data flows.
+                // M5.5/M7: the function pane hosts the composite VM (matches + character box).
                 var functionPane = editor.FindControl<Views.FunctionPaneView>("FunctionPane");
-                var matchesWired = functionPane?.DataContext is ViewModels.MatchListViewModel;
+                var matchesWired = functionPane?.DataContext is ViewModels.FunctionPaneViewModel fvm &&
+                                   fvm.Matches is not null && fvm.Characters is not null;
 
                 // M5.4 TM write: a confirm must land a row in tm.db, and re-selecting the
                 // confirmed bubble must surface a 100% match in the results box. This was the
@@ -432,9 +436,10 @@ internal static class SmokeTest
                 // OpenStores swallowed the mismatch so the box just showed "No matches".
                 var tmRowOk = false;
                 var tmDiag = "";
-                if (matchesWired && functionPane?.DataContext is ViewModels.MatchListViewModel mvm &&
+                if (matchesWired && functionPane?.DataContext is ViewModels.FunctionPaneViewModel fvm9 &&
                     vm?.Segments is { } segs2 && confirmed is { } confirmedRow)
                 {
+                    var mvm = fvm9.Matches;
                     segs2.SelectBubbleId(confirmedRow.Id);
                     // The query is async-void with a 150 ms debounce and ConfigureAwait(true),
                     // so its continuations need the UI dispatcher. Pump in a loop rather than
@@ -890,6 +895,126 @@ internal static class SmokeTest
             }
         });
 
+        // 9g. M7 function pane: kind selector, character box (master suggestions + chapter
+        //     names + speaker write-through), notes and the LLM comment display/clear —
+        //     all through the composite FunctionPaneViewModel against the example chapter.
+        CheckDetail("M7 pane: kind / character / notes / LLM comment", () =>
+        {
+            var tmp = Path.Combine(Path.GetTempPath(), "pigcomic-smoke-m7", Guid.NewGuid().ToString("N"));
+            try
+            {
+                // Seed a master list so autocomplete has something to suggest.
+                Directory.CreateDirectory(tmp);
+                var master = CharacterList.CreateNew(Path.Combine(tmp, CharacterList.FileName));
+                master.AddOrUpdate(new CharacterList.MasterCharacter("小猪", "", "", "", "", "", ""));
+
+                StripImageGenerator.Generate(tmp, 640, 1280);
+                var pcml = ExampleChapterBuilder.Build(
+                    tmp, 640, 1280,
+                    Path.Combine(tmp, "strip.jpg"), Path.Combine(tmp, "strip.png"));
+
+                var editor = new EditorView(pcml, tmp);
+                editor.Show();
+                var vm = editor.DataContext as ViewModels.EditorViewModel;
+                var deadline = Environment.TickCount64 + 8000;
+                while (Environment.TickCount64 < deadline)
+                {
+                    Thread.Sleep(20);
+                    Dispatcher.UIThread.RunJobs();
+                    if (vm?.Segments?.Items.Count > 0)
+                    {
+                        break;
+                    }
+                }
+
+                var pane = editor.FindControl<Views.FunctionPaneView>("FunctionPane");
+                if (pane?.DataContext is not ViewModels.FunctionPaneViewModel fvm || vm?.Segments is null)
+                {
+                    editor.Close();
+                    return "M7 pane VM not wired";
+                }
+
+                // b0003: no character, kind Sfx. Select it and exercise the pane.
+                vm.Segments.SelectBubbleId("b0003");
+                Dispatcher.UIThread.RunJobs();
+                var row = vm.Segments.SelectedBubble;
+                if (row is null)
+                {
+                    editor.Close();
+                    return "b0003 not selected";
+                }
+
+                // Kind selector (M7.3): set via the pane VM → bubble kind writes through.
+                fvm.Kind = PigComic.Core.Domain.BubbleKind.Speech;
+                Dispatcher.UIThread.RunJobs();
+                var kindOk = row.Bubble.Kind == PigComic.Core.Domain.BubbleKind.Speech;
+
+                // Character box (M7.2): suggestions prefer master prefix; apply commits speaker.
+                fvm.Characters.Query = "小";
+                Dispatcher.UIThread.RunJobs();
+                var suggested = fvm.Characters.Suggestions.Contains("小猪");
+                fvm.Characters.ApplyCharacter("小猪");
+                Dispatcher.UIThread.RunJobs();
+                var charOk = row.Bubble.Character == "小猪" &&
+                             fvm.Characters.ChapterNames.Contains("小猪");
+
+                // A brand-NEW name triggers the "add to master" offer (§14.5).
+                fvm.Characters.ApplyCharacter("新角色");
+                Dispatcher.UIThread.RunJobs();
+                var masterOffer = fvm.Characters.MasterOfferName == "新角色";
+                fvm.Characters.DismissMasterOffer();
+                var offerCleared = !fvm.Characters.HasMasterOffer;
+
+                // Notes (M7.3): write through + dirty.
+                fvm.Notes = "检查台词";
+                Dispatcher.UIThread.RunJobs();
+                var notesOk = row.Bubble.Notes == "检查台词" && vm.SaveStateLabel == "unsaved";
+
+                // LLM comment (M7.3): seed one, re-select so the pane mirrors it, clear it.
+                var llmOk = false;
+                if (row.Bubble is { } b)
+                {
+                    PigComic.Core.Package.BubbleMutations.SetLlmComment(b, "仮コメント");
+                    vm.Segments.SelectBubbleId("b0001");
+                    Dispatcher.UIThread.RunJobs();
+                    vm.Segments.SelectBubbleId("b0003");
+                    Dispatcher.UIThread.RunJobs();
+                    var shown = fvm.LlmComment == "仮コメント" && fvm.HasLlmComment;
+                    fvm.ClearLlmComment();
+                    Dispatcher.UIThread.RunJobs();
+                    llmOk = shown && b.LlmComment.Length == 0 && !fvm.HasLlmComment;
+                }
+
+                editor.Close();
+
+                // Master-window persistence (M7.1): prefill a name, save, reload, duplicate block.
+                var mw = new CharacterMasterWindow(tmp, "新角色");
+                var mwVm = mw.DataContext as ViewModels.CharacterMasterViewModel;
+                var prefilled = mwVm is not null && mwVm.Rows.Any(r => r.Name == "新角色");
+                var saved = mwVm is not null && mwVm.Save();
+                mw.Close();
+                var reloaded = saved && CharacterList.Load(Path.Combine(tmp, CharacterList.FileName))
+                    .Find("新角色") is not null;
+                if (mwVm is not null)
+                {
+                    mwVm.Rows.Add(new ViewModels.CharacterMasterRowViewModel { Name = "新角色" });
+                    var dupBlocked = !mwVm.Save();
+                    return kindOk && suggested && charOk && masterOffer && offerCleared && notesOk && llmOk &&
+                           prefilled && saved && reloaded && dupBlocked
+                        ? null
+                        : $"M7 failed: kind={kindOk} suggested={suggested} char={charOk} " +
+                          $"offer={masterOffer} offerCleared={offerCleared} notes={notesOk} llm={llmOk} " +
+                          $"prefilled={prefilled} saved={saved} reloaded={reloaded} dupBlocked={dupBlocked}";
+                }
+
+                return "M7 failed: master window VM missing";
+            }
+            finally
+            {
+                try { Directory.Delete(tmp, recursive: true); } catch { /* best effort */ }
+            }
+        });
+
         // 10. Enforce the SPEC §21.2 control rule: every editable field is a PartTextEditor,
         //     because a bare TextBox silently loses the whole IME stack (clause capture,
         //     modern rendering, Enter guard). Documented rules do not survive contact with
@@ -904,6 +1029,7 @@ internal static class SmokeTest
             {
                 new MainWindow(), new CreateProjectDialog(), new RemoveProjectDialog("x", "y"),
                 new RelinkDialog(["a.pcml"]), new ImeTestWindow(), new SpikeWindow(),
+                new CharacterMasterWindow(Path.Combine(Path.GetTempPath(), "pigcomic-smoke-chars")),
                 new EditorView(Path.Combine(Path.GetTempPath(), "pigcomic-smoke-missing.pcml")),
             };
 

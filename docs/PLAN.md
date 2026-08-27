@@ -2,14 +2,12 @@
 
 ## STATUS — READ THIS BEFORE ANYTHING ELSE (2026-08-25)
 
-**M5.1–M5.6 and M6.1–M6.4 CODE DONE 2026-08-24/25.** M5.1 acceptance PASSED; the M5.2–M5.6
-batch and the M6.1–M6.4 acceptances are **manual — owner batch test** (see the per-task
-notes; IME items need a real IME session). During 2026-08-25 testing the owner surfaced
-three defects, all fixed with regression guards (D-52 part 2, D-53, and the M6 wiring fix):
-focus-after-confirm landed on the hidden source editor; TM appeared dead due to a silently
-swallowed store language-pair mismatch; split-part editors were never re-wired.
-**Next task: M7** (characters, kind, notes). Do not go past the first task below that
-is not marked done.
+**M5.1–M5.6, M6.1–M6.4 and M7.1–M7.3 CODE DONE 2026-08-24/25.** M5.1 acceptance PASSED;
+the M5.2–M5.6 batch, the M6.1–M6.4 acceptances and the M7 acceptances are **manual — owner
+batch test** (see the per-task notes; IME items need a real IME session). The owner cleared
+the M6 batch ("all bubble operations green") on 2026-08-25 after the D-55/56/57 fixes.
+**Next task: M8** (mechanical QA, repetition, find/replace, stats). Do not go past the
+first task below that is not marked done.
 
 | Milestone | State |
 |---|---|
@@ -19,8 +17,9 @@ is not marked done.
 | M2.6 in-message IMM32 clause capture · M2.7 modern IME rendering | ✅ **DONE** — verified by the owner's gate run across MS-IME JA, ATOK, MS Pinyin and MS-IME Korean |
 | **M2.5 IME gate** | ✅ **PASSED 2026-08-24 — 6/6 recorded** (`docs/IME_REPORT.md`) |
 | **M5.1–M5.6** | ▶️ **CODE DONE 2026-08-24/25 — M5.1 PASSED; M5.2–M5.6 wait on the owner's batch test** |
-| **M6.1–M6.4** | ▶️ **CODE DONE 2026-08-25 — manual acceptance pending: owner** (marker drag/place/delete, part split + Tab) |
-| M7 – M11 | ⏸ open after the M5/M6 batches |
+| **M6.1–M6.4** | ▶️ **CODE DONE 2026-08-25 — owner cleared the fix batch ("all bubble ops green")** |
+| **M7.1–M7.3** | ▶️ **CODE DONE 2026-08-25 — manual acceptance pending: owner** (master editor, character box, kind/notes/LLM) |
+| M8 – M11 | ⏸ open after the M5/M7 batches |
 | M-TSF (TSF text store) | ⏸ not started; Q7 resolved — stays scheduled after M6 (IMM32 path carries JA/ATOK today) |
 
 > **Model reform, 2026-08-25 (D-49/D-50/D-51).** A chapter no longer has pages: its images
@@ -31,15 +30,16 @@ is not marked done.
 > if you find a leftover mention of pages or regions, the SPEC wins — fix the plan.
 
 Verified baseline at that commit: `dotnet build PigComic.sln` clean, **221/221 tests**,
-**`--smoke` 25/25** (the M6 marker drag/place/delete/split + real-pointer placement +
-drag-to-reorder checks added 2026-08-25). If those numbers differ when you start, something
-regressed — find out what before touching anything else.
+**`--smoke` 27/27** (M6 checks + the real-pointer placement + drag-to-reorder + M7 pane +
+CharacterMasterWindow checks added 2026-08-25). If those numbers differ when you start,
+something regressed — find out what before touching anything else.
 
-**If you are an executing model:** begin at **M7** (characters, kind, notes) only after the
-owner clears the M5/M6 batches; until then the batch list below is the manual test sheet. Do
-not re-run the finished milestones above, and do not re-open the IME work — the gate is closed
-and `src/PigComic.App/Ime/` is verified against four IMEs. If you touch any editable text
-field, it must be a `PartTextEditor` (SPEC §21.2); `--smoke` enforces that.
+**If you are an executing model:** begin at **M8** (mechanical QA, repetition, find/replace,
+stats) after the owner clears the M5/M7 batches; until then the batch lists below are the
+manual test sheets. Do not re-run the finished milestones above, and do not re-open the IME
+work — the gate is closed and `src/PigComic.App/Ime/` is verified against four IMEs. If you
+touch any editable text field, it must be a `PartTextEditor` (SPEC §21.2); `--smoke` enforces
+that.
 
 **M5.2–M5.6 owner batch test** (Debug menu → "Editor: open example chapter"; the strip's
 colored bands are the synthetic test pattern, not a bug — bubble overlays draw on top):
@@ -63,6 +63,10 @@ colored bands are the synthetic test pattern, not a bug — bubble overlays draw
 2. Ctrl+B (crosshair) → click between two markers → new `u`-prefixed row appears between them, kind Speech, Untranslated; Shift+click stays armed; Ctrl+B again or Esc disarms (§15.2).
 3. Delete (image pane or list focused, not inside a text editor) → confirm dialog with source preview → row+cross gone, selection lands on a neighbour (§15.2).
 4. Alt+3 on a bubble → 3 stacked editors + 3 part crosses 48 px apart; Ctrl+Enter walks parts and commits only on the last; Alt+1 merges with `\n`s; Tab/Shift+Tab moves between parts, nothing at the ends; drag a part cross (bubble selected) moves only that part (§15.3).
+
+**M7 owner batch test** (same example chapter):
+1. Main window → project → "Master characters": add a row, Ctrl+V a screenshot into its image cell → PNG in `characters/`, grid shows it; duplicate name rejected inline; delete row with confirm (§16).
+2. Editor — function pane: (a) kind toggles change the bubble's kind and round-trip in the saved XML; (b) type `小` in the Character field → suggestion `小猪` appears; Enter commits; click a chapter-name button → `@character` set and the source-column header shows it; (c) type a brand-new name + Enter → appears in the chapter buttons and in saved `<characters>`, plus the "Add 『X』 to master list?" [Add/Not now] prompt (Add opens the master editor prefilled); (d) notes persist; (e) an `llmComment` in the .pcml displays and Clear empties it; Ctrl+Shift+K/C/N focus each section (§14.5/§14.6).
 
 **Owner todo (pending, recorded for M7):** scroll wheel should respond anywhere the mouse
 points, and pane-synchronized scrolling once the edit pane exists.
@@ -341,22 +345,25 @@ Milestone order is risk-ordered and fixed. M2 was the gate for M5–M11; it reco
 
 ---
 
-## M7 — Characters, kind, notes
+## M7 — Characters, kind, notes ▶️ CODE DONE 2026-08-25 (manual acceptance pending: owner)
 
-### M7.1 Master character editor
-- **Files**: `src/PigComic.App/Views/CharacterMasterWindow.axaml(.cs)` + VM; Core work is M4.1's `CharacterList`.
+### M7.1 Master character editor — CODE DONE 2026-08-25 (manual acceptance pending: owner)
+- **Files**: `src/PigComic.App/Views/CharacterMasterWindow.axaml(.cs)`, `ViewModels/CharacterMasterViewModel.cs`; Core work was M4.1's `CharacterList`.
 - **Behavior**: SPEC §16 master editor incl. Ctrl+V clipboard image paste → PNG file (§6.3), name uniqueness, delete confirm.
 - **Acceptance** (manual): paste a screenshot into a character's image cell → PNG appears in `characters/` and renders in the grid; duplicate name rejected inline.
+- **Delivered 2026-08-25**: `CharacterMasterWindow` (ListBox of §6.3 rows: name / image cell with preview + Paste + Browse / gender / age / firstChapter / pronoun / comments; delete with confirm; inline duplicate-name rejection; unnamed rows are draft-only). Ctrl+V pastes the clipboard bitmap into the SELECTED row (Avalonia 12 API: `IClipboard.TryGetBitmapAsync`); images are re-encoded to PNG under `characters/<name>-<8hex>.png`. Reachable from the project view ("Master characters") and from the character box's "Add to master?" offer (prefilled). DataGrid not used — no Avalonia.DataGrid package; a ListBox template keeps it to existing dependencies.
 
-### M7.2 Character box (function pane)
-- **Files**: `src/PigComic.App/Views/FunctionPaneView.axaml(.cs)`, `ViewModels/CharacterBoxViewModel.cs`, autocomplete control `Controls/AutoCompleteBox` usage.
+### M7.2 Character box (function pane) — CODE DONE 2026-08-25 (manual acceptance pending: owner)
+- **Files**: `ViewModels/CharacterBoxViewModel.cs`, `FunctionPaneView` additions (the autocomplete is a PartTextEditor + suggestion ListBox — NOT Avalonia's AutoCompleteBox, whose inner TextBox would silently lose the IME stack, SPEC §21.2).
 - **Behavior**: SPEC §14.5 item 3 + §16 (chapter-name buttons, autocomplete over master, new-name flow with master-list offer).
 - **Acceptance** (manual): click a chapter button → bubble's `@character` set and source column shows it; type a brand-new name + Enter → appears as a new button and in saved `<characters>`; the "add to master" prompt opens the master editor prefilled.
+- **Delivered 2026-08-25**: name field (PartTextEditor, Enter commits; ↓/↑ move the highlight; Esc dismisses), suggestions over the master list (prefix-first then substring; prefix search over `CharacterList`; missing/corrupt master degrades silently), chapter-name buttons (distinct names from `<characters>` + `@character`), `ApplyCharacter` → `SetCharacter` (adds to the chapter list) + dirty + header refresh; a brand-new name raises the inline "Add 『X』 to master list?" [Add/Not now] — Add opens the master editor prefilled.
 
-### M7.3 Kind selector + notes + LLM comment display
-- **Files**: `FunctionPaneView` additions, VM.
+### M7.3 Kind selector + notes + LLM comment display — CODE DONE 2026-08-25 (manual acceptance pending: owner)
+- **Files**: `ViewModels/FunctionPaneViewModel.cs` (composite: matches + character box + kind/notes/llmComment), `FunctionPaneView` sections.
 - **Behavior**: SPEC §14.5 items 2/4/5; Ctrl+Shift+K/C/N focus jumps.
 - **Acceptance** (manual): change kind → overlay/source column glyph update and XML round-trips; notes persist; `llmComment` from the example file displays and its clear button empties it.
+- **Delivered 2026-08-25**: 6 kind ToggleButtons (Speech/Thought/Narration/SFX/Sign/Note; selection-synced, write-through `SetKind` + dirty), notes PartTextEditor (multi-line, Enter=newline, write-through `SetNotes` + dirty), read-only LLM comment + Clear button (`ClearLlmComment`), Ctrl+Shift+K/C/N focus jumps (KeyBindings + EditorView routing). The pane's DataContext is now `FunctionPaneViewModel` (owns `Matches`, `Characters`); smoke updated to the composite.
 
 ---
 

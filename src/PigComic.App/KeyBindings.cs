@@ -73,6 +73,18 @@ public static class KeyBindings
     public static bool IsPrevPart(KeyEventArgs e)
         => e.Key == Key.Tab && e.KeyModifiers == KeyModifiers.Shift;
 
+    /// <summary>Ctrl+Shift+K: focus the kind selector (SPEC §14.6).</summary>
+    public static bool IsFocusKind(KeyEventArgs e)
+        => e.Key == Key.K && e.KeyModifiers == (KeyModifiers.Control | KeyModifiers.Shift);
+
+    /// <summary>Ctrl+Shift+C: focus the character box.</summary>
+    public static bool IsFocusCharacter(KeyEventArgs e)
+        => e.Key == Key.C && e.KeyModifiers == (KeyModifiers.Control | KeyModifiers.Shift);
+
+    /// <summary>Ctrl+Shift+N: focus the notes field.</summary>
+    public static bool IsFocusNotes(KeyEventArgs e)
+        => e.Key == Key.N && e.KeyModifiers == (KeyModifiers.Control | KeyModifiers.Shift);
+
     /// <summary>Ctrl+1..Ctrl+9 → result number (or null).</summary>
     public static int? NthMatch(KeyEventArgs e)
     {

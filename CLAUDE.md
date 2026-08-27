@@ -51,6 +51,13 @@ Work strictly from the task list in `docs/PLAN.md`, one task per session, in ord
   that `ContainerPrepared` never sees — `WireEditorsIn` re-wires a row on `Parts.CollectionChanged`
   (this was a silent dead-Ctrl+Enter bug, D-54e). Smoke drives the interaction seam
   (`InteractionPointerPressed/Moved/Released`) with strip coordinates — do not break it.
+- **M7 function pane (D-58)**: the pane's DataContext is the composite
+  `FunctionPaneViewModel` (`Matches` = the §9 box, `Characters` = the character box,
+  plus selection-mirrored `Kind`/`Notes`/`LlmComment` with write-through row setters).
+  The character autocomplete is a `PartTextEditor` + suggestion `ListBox` — never
+  Avalonia's `AutoCompleteBox` (its inner TextBox loses the IME stack). Master editor =
+  `CharacterMasterWindow` (ListBox of §6.3 rows; Ctrl+V via `IClipboard.TryGetBitmapAsync`).
+  Ctrl+Shift+K/C/N focus jumps route through `FunctionPaneView.FocusKind/Character/Notes`.
 - **Crash lessons (already cost two sessions — do not regress)**:
   - `TiledImageControl.Install` must read a replaced bitmap's `PixelSize` **before** disposing
     it (Avalonia `Bitmap` throws `ObjectDisposedException` on post-dispose access).

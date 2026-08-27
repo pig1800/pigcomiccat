@@ -180,6 +180,59 @@ public partial class BubbleRowViewModel : ObservableObject
         Parts[partIndex - 1].Text = Bubble.SourceText; // flows through OnPartTextChanged
     }
 
+    // ---------------------------------------------------------------- M7: kind / notes / llm comment
+
+    /// <summary>Kind selector (SPEC §14.5 item 2): writes through + dirty; no-op when unchanged.</summary>
+    public void SetKind(BubbleKind kind)
+    {
+        if (Bubble.Kind == kind)
+        {
+            return;
+        }
+
+        BubbleMutations.SetKind(Bubble, kind);
+        _session.MarkDirty();
+        OnPropertyChanged(nameof(KindText));
+        NotifyStatus();
+    }
+
+    /// <summary>Notes (SPEC §14.5 item 4): writes through + dirty; no-op when unchanged.</summary>
+    public void SetNotes(string notes)
+    {
+        if (Bubble.Notes == notes)
+        {
+            return;
+        }
+
+        BubbleMutations.SetNotes(Bubble, notes);
+        _session.MarkDirty();
+    }
+
+    /// <summary>Clears the LLM comment (SPEC §14.5 item 5); no-op when already empty.</summary>
+    public void ClearLlmComment()
+    {
+        if (Bubble.LlmComment.Length == 0)
+        {
+            return;
+        }
+
+        BubbleMutations.SetLlmComment(Bubble, "");
+        _session.MarkDirty();
+    }
+
+    /// <summary>Raises the source-column character display after a speaker change (M7.2).</summary>
+    public void NotifyCharacterChanged()
+    {
+        OnPropertyChanged(nameof(CharacterText));
+        NotifyStatus();
+    }
+
+    /// <summary>Rebuilds the part cells after a speaker/kind edit that the pane applied (M7.2).</summary>
+    public void NotifyKindChanged()
+    {
+        OnPropertyChanged(nameof(KindText));
+    }
+
     private void NotifyStatus()
     {
         OnPropertyChanged(nameof(Status));

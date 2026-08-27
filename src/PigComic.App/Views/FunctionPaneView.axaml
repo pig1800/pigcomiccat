@@ -1,14 +1,97 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:PigComic.App.ViewModels"
+             xmlns:controls="using:PigComic.App.Controls"
              xmlns:views="using:PigComic.App.Views"
              x:Class="PigComic.App.Views.FunctionPaneView"
-             x:DataType="vm:MatchListViewModel">
+             x:DataType="vm:FunctionPaneViewModel">
     <DockPanel>
-        <Border DockPanel.Dock="Bottom" Background="#0FFFFFFF" Padding="12" Margin="0,8,0,0">
-            <TextBlock Text="Kind · Character · Notes · LLM QA — land in M7"
-                       Foreground="Gray" FontSize="12" TextWrapping="Wrap"/>
+        <!-- M7.3 LLM comment (SPEC §14.5 item 5) -->
+        <StackPanel DockPanel.Dock="Bottom" Spacing="3" Margin="12,6,12,4"
+                    IsVisible="{Binding HasLlmComment}">
+            <DockPanel>
+                <Button DockPanel.Dock="Right" Content="Clear" FontSize="11" Padding="8,1"
+                        Click="OnClearLlmClick" ToolTip.Tip="Clear the LLM comment"/>
+                <TextBlock Text="LLM comment" FontSize="11" Foreground="Gray" VerticalAlignment="Center"/>
+            </DockPanel>
+            <TextBlock Text="{Binding LlmComment}" TextWrapping="Wrap" FontSize="12"
+                       Foreground="#883366" Background="#14E3F2FD" Padding="6,3"/>
+        </StackPanel>
+
+        <!-- M7.3 Notes (SPEC §14.5 item 4) -->
+        <StackPanel DockPanel.Dock="Bottom" Spacing="3" Margin="12,4,12,4">
+            <TextBlock Text="Notes" FontSize="11" Foreground="Gray"/>
+            <controls:PartTextEditor x:Name="NotesField" Text="{Binding Notes, Mode=TwoWay}"
+                                     MultiLine="True" EnterInsertsNewline="True"
+                                     MinHeight="44" MaxHeight="96" FontSize="12"
+                                     Watermark="Translator notes…"/>
+        </StackPanel>
+
+        <!-- M7.2 character box (spec §14.5 item 3) -->
+        <StackPanel DockPanel.Dock="Bottom" Spacing="4" Margin="12,6,12,4">
+            <!-- "Add to master?" offer -->
+            <DockPanel IsVisible="{Binding Characters.HasMasterOffer}">
+                <StackPanel Orientation="Horizontal" Spacing="6" DockPanel.Dock="Right">
+                    <Button Content="Add" FontSize="11" Padding="8,1" Click="OnOfferAddClick"/>
+                    <Button Content="Not now" FontSize="11" Padding="8,1" Click="OnOfferDismissClick"/>
+                </StackPanel>
+                <TextBlock Text="{Binding Characters.MasterOfferName, StringFormat=Add 『{0}』 to master list?}"
+                           FontSize="12" VerticalAlignment="Center" Foreground="#7A5B00"/>
+            </DockPanel>
+
+            <!-- Name field + suggestion popup -->
+            <TextBlock Text="Character" FontSize="11" Foreground="Gray"/>
+            <controls:PartTextEditor x:Name="CharacterField" FontSize="13" Watermark="Type a name…"
+                                     Text="{Binding Characters.Query, Mode=TwoWay}"
+                                     KeyDown="OnCharacterKeyDown" GotFocus="OnCharacterGotFocus"/>
+            <ListBox x:Name="SuggestionsBox" ItemsSource="{Binding Characters.Suggestions}"
+                     SelectedItem="{Binding Characters.SelectedName, Mode=TwoWay}"
+                     MaxHeight="110" MinHeight="0" Margin="0"
+                     IsVisible="{Binding Characters.SuggestionsVisible}"
+                     Background="#FEFEFE"
+                     DoubleTapped="OnSuggestionTapped">
+                <ListBox.ItemTemplate>
+                    <DataTemplate x:DataType="x:String">
+                        <TextBlock Text="{Binding}" FontSize="13" Padding="4,2"/>
+                    </DataTemplate>
+                </ListBox.ItemTemplate>
+            </ListBox>
+            <DockPanel>
+                <Button DockPanel.Dock="Right" Content="Apply" FontSize="11" Padding="8,1"
+                        Click="OnCharacterApplyClick"/>
+                <TextBlock Text="Chapter characters:" FontSize="11" Foreground="Gray" VerticalAlignment="Center"/>
+            </DockPanel>
+            <ItemsControl x:Name="ChapterButtons" ItemsSource="{Binding Characters.ChapterNames}"
+                          Margin="0,2,0,0">
+                <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate>
+                        <WrapPanel/>
+                    </ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="x:String">
+                        <Button Content="{Binding}" FontSize="12" Padding="8,2" Margin="0,2,6,0"
+                                Click="OnChapterNameClick"/>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+        </StackPanel>
+
+        <!-- M7.3 kind selector (spec §14.5 item 2) -->
+        <StackPanel DockPanel.Dock="Bottom" Spacing="3" Margin="12,4,12,6">
+            <TextBlock Text="Kind" FontSize="11" Foreground="Gray"/>
+            <WrapPanel x:Name="KindButtons">
+                <ToggleButton x:Name="KindSpeech" Content="Speech" Tag="Speech" Margin="0,0,4,4" IsCheckedChanged="OnKindToggle"/>
+                <ToggleButton x:Name="KindThought" Content="Thought" Tag="Thought" Margin="0,0,4,4" IsCheckedChanged="OnKindToggle"/>
+                <ToggleButton x:Name="KindNarration" Content="Narration" Tag="Narration" Margin="0,0,4,4" IsCheckedChanged="OnKindToggle"/>
+                <ToggleButton x:Name="KindSfx" Content="SFX" Tag="Sfx" Margin="0,0,4,4" IsCheckedChanged="OnKindToggle"/>
+                <ToggleButton x:Name="KindSign" Content="Sign" Tag="Sign" Margin="0,0,4,4" IsCheckedChanged="OnKindToggle"/>
+                <ToggleButton x:Name="KindNote" Content="Note" Tag="Note" Margin="0,0,4,4" IsCheckedChanged="OnKindToggle"/>
+            </WrapPanel>
+        </StackPanel>
+
+        <Border BorderBrush="#22000000" BorderThickness="0,1,0,0" Background="#08000000">
+            <views:MatchListView DataContext="{Binding Matches}"/>
         </Border>
-        <views:MatchListView/>
     </DockPanel>
 </UserControl>

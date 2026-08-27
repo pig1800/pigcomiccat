@@ -30,6 +30,7 @@ public partial class EditorView : Window
     private string? _storeError;
     private ConfirmService? _confirm;
     private MatchListViewModel? _matches;
+    private FunctionPaneViewModel? _pane;
     private AutosaveTimer? _autosave;
     private BubbleRowViewModel? _statusRow;
 
@@ -135,13 +136,13 @@ public partial class EditorView : Window
             _confirm.BubblesChanged += OnBubblesChanged;
             SegmentList.Confirm = _confirm;
 
-            _matches = new MatchListViewModel(session, _vm.Segments!, _tm, _tb)
-            {
-                StoreError = _storeError,
-            };
+            _pane = new FunctionPaneViewModel(session, _vm.Segments!, _tm, _tb, _projectFolder);
+            _matches = _pane.Matches;
+            _matches.StoreError = _storeError;
             _matches.TbInsertRequested += OnTbInsertRequested;
             _matches.BubblesChanged += OnBubblesChanged;
-            FunctionPane.DataContext = _matches;
+            _pane.Characters.AddToMasterRequested += OnAddToMasterRequested;
+            FunctionPane.DataContext = _pane;
 
             StartAutosave(session);
 
@@ -423,6 +424,17 @@ public partial class EditorView : Window
     /// <summary>TB term insert: at the caret of the focused part editor (SPEC §9).</summary>
     private void OnTbInsertRequested(string term) => SegmentList.InsertAtCaret(term);
 
+    /// <summary>§14.5 "Add to master?" accepted: open the master editor prefilled with the name.</summary>
+    private void OnAddToMasterRequested(string name)
+    {
+        if (_projectFolder is null)
+        {
+            return;
+        }
+
+        new CharacterMasterWindow(_projectFolder, name).Show();
+    }
+
     /// <summary>Ctrl+1..9 inserts the Nth result (SPEC §9/§14.6): fire-and-forget key routing.</summary>
     protected override void OnKeyDown(KeyEventArgs e)
     {
@@ -467,6 +479,21 @@ public partial class EditorView : Window
         }
         else if (e.Key == Key.Escape && ImagePane.CancelInteraction())
         {
+            e.Handled = true;
+        }
+        else if (PigComic.App.KeyBindings.IsFocusKind(e))
+        {
+            FunctionPane.FocusKind();
+            e.Handled = true;
+        }
+        else if (PigComic.App.KeyBindings.IsFocusCharacter(e))
+        {
+            FunctionPane.FocusCharacter();
+            e.Handled = true;
+        }
+        else if (PigComic.App.KeyBindings.IsFocusNotes(e))
+        {
+            FunctionPane.FocusNotes();
             e.Handled = true;
         }
     }
