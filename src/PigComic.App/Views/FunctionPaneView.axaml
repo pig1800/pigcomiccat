@@ -59,35 +59,49 @@
             <DockPanel>
                 <Button DockPanel.Dock="Right" Content="Apply" FontSize="11" Padding="8,1"
                         Click="OnCharacterApplyClick"/>
+                <Button x:Name="OpenMasterButton" DockPanel.Dock="Right" Content="Master…" FontSize="11" Padding="8,1"
+                        Click="OnOpenMasterClick" ToolTip.Tip="Open the master character editor (Ctrl+Shift+M)"/>
                 <TextBlock Text="Chapter characters:" FontSize="11" Foreground="Gray" VerticalAlignment="Center"/>
             </DockPanel>
-            <ItemsControl x:Name="ChapterButtons" ItemsSource="{Binding Characters.ChapterNames}"
-                          Margin="0,2,0,0">
-                <ItemsControl.ItemsPanel>
-                    <ItemsPanelTemplate>
-                        <WrapPanel/>
-                    </ItemsPanelTemplate>
-                </ItemsControl.ItemsPanel>
-                <ItemsControl.ItemTemplate>
-                    <DataTemplate x:DataType="x:String">
-                        <Button Content="{Binding}" FontSize="12" Padding="8,2" Margin="0,2,6,0"
-                                Click="OnChapterNameClick"/>
-                    </DataTemplate>
-                </ItemsControl.ItemTemplate>
-            </ItemsControl>
+            <WrapPanel Margin="0,2,0,0">
+                <Button Content="✕ Clear" FontSize="12" Padding="8,2" Margin="0,2,6,0"
+                        Click="OnEraseCharacterClick" ToolTip.Tip="Clear the selected bubble's speaker"/>
+                <ItemsControl x:Name="ChapterButtons" ItemsSource="{Binding Characters.ChapterNames}">
+                    <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <WrapPanel/>
+                        </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="x:String">
+                            <Button Content="{Binding}" FontSize="12" Padding="8,2" Margin="0,2,6,0"
+                                    Click="OnChapterNameClick"
+                                    ContextMenu="{Binding #ChapterNameMenu}"/>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </WrapPanel>
+            <ContextMenu x:Name="ChapterNameMenu">
+                <MenuItem Header="Remove from chapter list" Click="OnRemoveChapterNameClick"/>
+            </ContextMenu>
         </StackPanel>
 
-        <!-- M7.3 kind selector (spec §14.5 item 2) -->
+        <!-- M7.3 kind selector (spec §14.5 item 2) + arbitrary kind textbox (D-59) -->
         <StackPanel DockPanel.Dock="Bottom" Spacing="3" Margin="12,4,12,6">
             <TextBlock Text="Kind" FontSize="11" Foreground="Gray"/>
-            <WrapPanel x:Name="KindButtons">
-                <ToggleButton x:Name="KindSpeech" Content="Speech" Tag="Speech" Margin="0,0,4,4" IsCheckedChanged="OnKindToggle"/>
-                <ToggleButton x:Name="KindThought" Content="Thought" Tag="Thought" Margin="0,0,4,4" IsCheckedChanged="OnKindToggle"/>
-                <ToggleButton x:Name="KindNarration" Content="Narration" Tag="Narration" Margin="0,0,4,4" IsCheckedChanged="OnKindToggle"/>
-                <ToggleButton x:Name="KindSfx" Content="SFX" Tag="Sfx" Margin="0,0,4,4" IsCheckedChanged="OnKindToggle"/>
-                <ToggleButton x:Name="KindSign" Content="Sign" Tag="Sign" Margin="0,0,4,4" IsCheckedChanged="OnKindToggle"/>
-                <ToggleButton x:Name="KindNote" Content="Note" Tag="Note" Margin="0,0,4,4" IsCheckedChanged="OnKindToggle"/>
-            </WrapPanel>
+            <DockPanel>
+                <controls:PartTextEditor x:Name="KindCustom" DockPanel.Dock="Right" Width="90"
+                                         Text="{Binding Kind, Mode=TwoWay}" FontSize="12"
+                                         Watermark="Custom…" EnterInsertsNewline="False"/>
+                <WrapPanel x:Name="KindButtons">
+                    <ToggleButton x:Name="KindSpeech" Content="Speech" Tag="Speech" Margin="0,0,4,4" IsCheckedChanged="OnKindToggle"/>
+                    <ToggleButton x:Name="KindThought" Content="Thought" Tag="Thought" Margin="0,0,4,4" IsCheckedChanged="OnKindToggle"/>
+                    <ToggleButton x:Name="KindNarration" Content="Narration" Tag="Narration" Margin="0,0,4,4" IsCheckedChanged="OnKindToggle"/>
+                    <ToggleButton x:Name="KindSfx" Content="SFX" Tag="Sfx" Margin="0,0,4,4" IsCheckedChanged="OnKindToggle"/>
+                    <ToggleButton x:Name="KindSign" Content="Sign" Tag="Sign" Margin="0,0,4,4" IsCheckedChanged="OnKindToggle"/>
+                    <ToggleButton x:Name="KindNote" Content="Note" Tag="Note" Margin="0,0,4,4" IsCheckedChanged="OnKindToggle"/>
+                </WrapPanel>
+            </DockPanel>
         </StackPanel>
 
         <Border BorderBrush="#22000000" BorderThickness="0,1,0,0" Background="#08000000">

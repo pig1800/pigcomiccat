@@ -74,25 +74,25 @@ public class ProjectFileTests : IDisposable
     }
 
     [Fact]
-    public void CharacterList_Add_Remove_RoundTrip()
+    public void CharacterStore_Add_Remove_RoundTrip()
     {
-        var path = Path.Combine(_dir, "characters.json");
-        CharacterList.CreateNew(path);
-        var cl = CharacterList.Load(path);
-        var pig = new CharacterList.MasterCharacter("ピッグ", "characters/a3f09c12.png", "male", "16", "001", "オレ", "語尾「〜だぜ」");
-        cl.AddOrUpdate(pig);
-        cl.AddOrUpdate(new CharacterList.MasterCharacter("魔王", "", "", "", "", "", ""));
+        var path = Path.Combine(_dir, "characters.db");
+        using (var store = new CharacterStore(path))
+        {
+            var pig = new CharacterStore.MasterCharacter("ピッグ", "ブタ", "buta", null, "male", "16", "001", "オレ", "語尾「〜だぜ」");
+            store.AddOrUpdate(pig);
+            store.AddOrUpdate(new CharacterStore.MasterCharacter("魔王", "", "", null, "", "", "", "", ""));
 
-        Assert.Equal(2, cl.Characters.Count);
-        // Name uniqueness: adding the same name again updates the row, one row only.
-        cl.AddOrUpdate(pig with { Image = "characters/other.png" });
-        Assert.Equal(2, cl.Characters.Count);
-        Assert.Equal("characters/other.png", cl.Find("ピッグ")!.Image);
+            Assert.Equal(2, store.LoadAll().Count);
+            // Name uniqueness: adding the same name again updates the row, one row only.
+            store.AddOrUpdate(pig with { Localized = "マオウ" });
+            var all = store.LoadAll();
+            Assert.Equal(2, all.Count);
+            Assert.Equal("マオウ", store.Find("ピッグ")!.Localized);
 
-        var reloaded = CharacterList.Load(path);
-        Assert.Equal(2, reloaded.Characters.Count);
-        Assert.True(reloaded.Remove("ピッグ"));
-        Assert.Single(CharacterList.Load(path).Characters);
+            Assert.True(store.Remove("ピッグ"));
+            Assert.Single(store.LoadAll());
+        }
     }
 
     [Fact]
@@ -102,10 +102,9 @@ public class ProjectFileTests : IDisposable
         ProjectFolder.Create(folder, "勇者小猪", "zh-CN", "ja");
 
         Assert.True(File.Exists(Path.Combine(folder, "project.json")));
-        Assert.True(File.Exists(Path.Combine(folder, "characters.json")));
+        Assert.True(File.Exists(Path.Combine(folder, "characters.db")));
         Assert.True(File.Exists(Path.Combine(folder, "tm.db")));
         Assert.True(File.Exists(Path.Combine(folder, "tb.db")));
-        Assert.True(Directory.Exists(Path.Combine(folder, "characters")));
 
         var (tm, tb) = ProjectFolder.OpenStores(folder, "zh-CN", "ja");
         using (tm)

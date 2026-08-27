@@ -199,10 +199,11 @@ public static class PcmlValidator
             }
 
             var kind = (string?)el.Attribute("kind");
-            if (kind is not null && !KnownKinds.Contains(kind))
+            if (kind is not null && kind.Length == 0)
             {
-                Error(issues, "PCML-E07", $"Bubble '{id}': unknown kind '{kind}'.");
+                Error(issues, "PCML-E07", $"Bubble '{id}': empty @kind.");
             }
+            // D-59: arbitrary kind values are allowed (the 6 known + custom); no longer an error.
 
             var status = (string?)el.Attribute("status");
             if (status is not null && !KnownStatuses.Contains(status))

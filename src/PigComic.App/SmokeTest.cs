@@ -905,8 +905,10 @@ internal static class SmokeTest
             {
                 // Seed a master list so autocomplete has something to suggest.
                 Directory.CreateDirectory(tmp);
-                var master = CharacterList.CreateNew(Path.Combine(tmp, CharacterList.FileName));
-                master.AddOrUpdate(new CharacterList.MasterCharacter("小猪", "", "", "", "", "", ""));
+                using (var seed = new CharacterStore(Path.Combine(tmp, CharacterStore.FileName)))
+                {
+                    seed.AddOrUpdate(new CharacterStore.MasterCharacter("小猪", "", "", null, "", "", "", "", ""));
+                }
 
                 StripImageGenerator.Generate(tmp, 640, 1280);
                 var pcml = ExampleChapterBuilder.Build(
@@ -944,10 +946,13 @@ internal static class SmokeTest
                     return "b0003 not selected";
                 }
 
-                // Kind selector (M7.3): set via the pane VM → bubble kind writes through.
-                fvm.Kind = PigComic.Core.Domain.BubbleKind.Speech;
+                // Kind (M7.3/D-59): set an arbitrary raw kind → writes through.
+                fvm.Kind = "Speech";
                 Dispatcher.UIThread.RunJobs();
-                var kindOk = row.Bubble.Kind == PigComic.Core.Domain.BubbleKind.Speech;
+                var kindOk = row.Bubble.KindRaw == "Speech";
+                fvm.Kind = "CustomSfx";
+                Dispatcher.UIThread.RunJobs();
+                var customKindOk = row.Bubble.KindRaw == "CustomSfx";
 
                 // Character box (M7.2): suggestions prefer master prefix; apply commits speaker.
                 fvm.Characters.Query = "小";
@@ -964,6 +969,11 @@ internal static class SmokeTest
                 var masterOffer = fvm.Characters.MasterOfferName == "新角色";
                 fvm.Characters.DismissMasterOffer();
                 var offerCleared = !fvm.Characters.HasMasterOffer;
+
+                // Erase the speaker (the "✕ Clear" button) + remove a chapter name.
+                fvm.Characters.EraseCharacter();
+                Dispatcher.UIThread.RunJobs();
+                var erased = row.Bubble.Character is null;
 
                 // Notes (M7.3): write through + dirty.
                 fvm.Notes = "检查台词";
@@ -993,17 +1003,18 @@ internal static class SmokeTest
                 var prefilled = mwVm is not null && mwVm.Rows.Any(r => r.Name == "新角色");
                 var saved = mwVm is not null && mwVm.Save();
                 mw.Close();
-                var reloaded = saved && CharacterList.Load(Path.Combine(tmp, CharacterList.FileName))
+                var reloaded = saved && new CharacterStore(Path.Combine(tmp, CharacterStore.FileName))
                     .Find("新角色") is not null;
                 if (mwVm is not null)
                 {
                     mwVm.Rows.Add(new ViewModels.CharacterMasterRowViewModel { Name = "新角色" });
                     var dupBlocked = !mwVm.Save();
-                    return kindOk && suggested && charOk && masterOffer && offerCleared && notesOk && llmOk &&
+                    return kindOk && customKindOk && suggested && charOk && masterOffer && offerCleared &&
+                           erased && notesOk && llmOk &&
                            prefilled && saved && reloaded && dupBlocked
                         ? null
-                        : $"M7 failed: kind={kindOk} suggested={suggested} char={charOk} " +
-                          $"offer={masterOffer} offerCleared={offerCleared} notes={notesOk} llm={llmOk} " +
+                        : $"M7 failed: kind={kindOk} customKind={customKindOk} suggested={suggested} char={charOk} " +
+                          $"offer={masterOffer} offerCleared={offerCleared} erased={erased} notes={notesOk} llm={llmOk} " +
                           $"prefilled={prefilled} saved={saved} reloaded={reloaded} dupBlocked={dupBlocked}";
                 }
 

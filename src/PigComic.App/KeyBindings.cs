@@ -85,6 +85,10 @@ public static class KeyBindings
     public static bool IsFocusNotes(KeyEventArgs e)
         => e.Key == Key.N && e.KeyModifiers == (KeyModifiers.Control | KeyModifiers.Shift);
 
+    /// <summary>Ctrl+Shift+M: open the master character editor (SPEC §14.6, D-58 direct entrance).</summary>
+    public static bool IsOpenMaster(KeyEventArgs e)
+        => e.Key == Key.M && e.KeyModifiers == (KeyModifiers.Control | KeyModifiers.Shift);
+
     /// <summary>Ctrl+1..Ctrl+9 → result number (or null).</summary>
     public static int? NthMatch(KeyEventArgs e)
     {

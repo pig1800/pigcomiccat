@@ -1,18 +1,22 @@
 using System.Collections.ObjectModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using PigComic.Core.Project;
+using SkiaSharp;
 
 namespace PigComic.App.ViewModels;
 
-/// <summary>One master-character row with editable fields (SPEC §6.3).</summary>
+/// <summary>One master-character row with editable fields (SPEC §6.3, SQLite-backed).</summary>
 public partial class CharacterMasterRowViewModel : ObservableObject
 {
+    /// <summary>The "original" name — the key, the value @character references.</summary>
     [ObservableProperty]
     private string _name = "";
 
-    /// <summary>Project-folder-relative image path, e.g. "characters/a3f09c12.png".</summary>
     [ObservableProperty]
-    private string _image = "";
+    private string _localized = "";
+
+    [ObservableProperty]
+    private string _pronunciation = "";
 
     [ObservableProperty]
     private string _gender = "";
@@ -29,34 +33,31 @@ public partial class CharacterMasterRowViewModel : ObservableObject
     [ObservableProperty]
     private string _comments = "";
 
-    /// <summary>Absolute path of the current image, for the preview thumbnail.</summary>
-    [ObservableProperty]
-    private string _imageAbsolute = "";
-
-    /// <summary>Thumbnail shown in the image cell (loaded from <see cref="ImageAbsolute"/>).</summary>
+    /// <summary>Portrait thumbnail (decoded from the stored PNG bytes by the VM).</summary>
     [ObservableProperty]
     private Avalonia.Media.IImage? _imagePreview;
 
-    public string ImageRelative => Image;
-
-    public CharacterList.MasterCharacter ToMaster()
-        => new(Name, Image, Gender, Age, FirstChapter, Pronoun, Comments);
+    /// <summary>Builds the Core record from the row (image bytes supplied separately by the VM).</summary>
+    public CharacterStore.MasterCharacter ToMaster(byte[]? image)
+        => new(Name.Trim(), Localized.Trim(), Pronunciation.Trim(), image,
+               Gender.Trim(), Age.Trim(), FirstChapter.Trim(), Pronoun.Trim(), Comments.Trim());
 }
 
 /// <summary>
-/// M7.1 master character editor (SPEC §16): a grid of §6.3 rows over characters.json.
-/// The window code-behind drives clipboard-paste and the file picker; this VM owns the
-/// rows, add/delete, uniqueness feedback and persistence. A prefill name seeds a new row.
+/// M7.1 master character editor (SPEC §16) over the SQLite character store. Rows carry
+/// the §6.3 fields incl. the new Original/Localized/Pronunciation name triplet; the portrait
+/// is a PNG BLOB downscaled to ≤256×256 on ingest (Skia, App-side — Core never touches Skia).
 /// </summary>
 public partial class CharacterMasterViewModel : ObservableObject
 {
+    private const int MaxImageDimension = 256;
+
     private readonly string _projectFolder;
-    private readonly CharacterList _list;
-    private readonly HashSet<string> _originalNames = new(StringComparer.Ordinal);
+    private readonly CharacterStore _store;
+    private readonly Dictionary<CharacterMasterRowViewModel, byte[]?> _rowImages = new();
 
     public ObservableCollection<CharacterMasterRowViewModel> Rows { get; } = [];
 
-    /// <summary>Set when a row's name collides with a DIFFERENT row (inline rejection).</summary>
     [ObservableProperty]
     private string _duplicateMessage = "";
 
@@ -67,73 +68,74 @@ public partial class CharacterMasterViewModel : ObservableObject
     public CharacterMasterViewModel(string projectFolder, string? prefillName = null)
     {
         _projectFolder = projectFolder;
-        Directory.CreateDirectory(Path.Combine(projectFolder, "characters"));
+        _store = new CharacterStore(Path.Combine(projectFolder, CharacterStore.FileName));
 
-        var path = Path.Combine(projectFolder, CharacterList.FileName);
-        _list = File.Exists(path) ? CharacterList.Load(path) : CharacterList.CreateNew(path);
-
-        foreach (var c in _list.Characters)
+        foreach (var c in _store.LoadAll())
         {
             var row = FromMaster(c);
             Rows.Add(row);
-            _originalNames.Add(c.Name);
-            LoadPreview(row);
+            _rowImages[row] = c.Image;
         }
 
-        if (!string.IsNullOrEmpty(prefillName) && !_originalNames.Contains(prefillName))
+        if (!string.IsNullOrEmpty(prefillName) && _store.Find(prefillName) is null)
         {
-            Rows.Add(FromMaster(new CharacterList.MasterCharacter(prefillName, "", "", "", "", "", "")));
+            var row = new CharacterMasterRowViewModel { Name = prefillName };
+            Rows.Add(row);
+            _rowImages[row] = null;
         }
 
         Rows.CollectionChanged += (_, _) => DuplicateMessage = "";
     }
 
-    private static CharacterMasterRowViewModel FromMaster(CharacterList.MasterCharacter c) => new()
+    private static CharacterMasterRowViewModel FromMaster(CharacterStore.MasterCharacter c)
     {
-        Name = c.Name,
-        Image = c.Image,
-        Gender = c.Gender,
-        Age = c.Age,
-        FirstChapter = c.FirstChapter,
-        Pronoun = c.Pronoun,
-        Comments = c.Comments,
-    };
-
-    /// <summary>Loads the thumbnail for an existing row's stored image (best-effort).</summary>
-    private void LoadPreview(CharacterMasterRowViewModel row)
-    {
-        if (string.IsNullOrEmpty(row.Image))
+        var row = new CharacterMasterRowViewModel
         {
+            Name = c.Name,
+            Localized = c.Localized,
+            Pronunciation = c.Pronunciation,
+            Gender = c.Gender,
+            Age = c.Age,
+            FirstChapter = c.FirstChapter,
+            Pronoun = c.Pronoun,
+            Comments = c.Comments,
+        };
+        SetPreview(row, c.Image);
+        return row;
+    }
+
+    private static void SetPreview(CharacterMasterRowViewModel row, byte[]? png)
+    {
+        if (png is null || png.Length == 0)
+        {
+            row.ImagePreview = null;
             return;
         }
 
-        var abs = Path.Combine(_projectFolder, row.Image);
-        row.ImageAbsolute = abs;
-        if (File.Exists(abs))
+        try
         {
-            try
-            {
-                row.ImagePreview = new Avalonia.Media.Imaging.Bitmap(abs);
-            }
-            catch
-            {
-                row.ImagePreview = null;
-            }
+            row.ImagePreview = new Avalonia.Media.Imaging.Bitmap(new MemoryStream(png));
+        }
+        catch
+        {
+            row.ImagePreview = null;
         }
     }
 
     public void AddRow()
     {
-        Rows.Add(new CharacterMasterRowViewModel());
+        var row = new CharacterMasterRowViewModel();
+        Rows.Add(row);
+        _rowImages[row] = null;
     }
 
-    /// <summary>Removes a row (the window confirms first).</summary>
     public void DeleteRow(CharacterMasterRowViewModel row)
     {
+        _rowImages.Remove(row);
         Rows.Remove(row);
     }
 
-    /// <summary>Persists every row to characters.json (SPEC §6.3: name required and unique).</summary>
+    /// <summary>Persists every row to characters.db (SPEC §6.3: name required and unique).</summary>
     public bool Save()
     {
         var names = new HashSet<string>(StringComparer.Ordinal);
@@ -152,12 +154,7 @@ public partial class CharacterMasterViewModel : ObservableObject
             }
         }
 
-        // Names removed from the grid are gone from the master list.
-        foreach (var removed in _originalNames.Where(n => !names.Contains(n)))
-        {
-            _list.Remove(removed);
-        }
-
+        var storedNames = _store.LoadAll().Select(c => c.Name).ToHashSet(StringComparer.Ordinal);
         foreach (var row in Rows)
         {
             var name = row.Name.Trim();
@@ -166,15 +163,20 @@ public partial class CharacterMasterViewModel : ObservableObject
                 continue;
             }
 
-            _list.AddOrUpdate(new CharacterList.MasterCharacter(
-                name, row.Image.Trim(), row.Gender.Trim(), row.Age.Trim(),
-                row.FirstChapter.Trim(), row.Pronoun.Trim(), row.Comments.Trim()));
+            storedNames.Remove(name);
+            _store.AddOrUpdate(row.ToMaster(_rowImages.GetValueOrDefault(row)));
+        }
+
+        // Names removed from the grid are gone from the store.
+        foreach (var removed in storedNames)
+        {
+            _store.Remove(removed);
         }
 
         return true;
     }
 
-    /// <summary>Records a picked/browsed image for a row (re-encoded to PNG, §6.3).</summary>
+    /// <summary>Ingests a browsed image: downscales to ≤256×256 (aspect-preserving), stores PNG bytes.</summary>
     public string? ApplyImage(CharacterMasterRowViewModel row, string absolutePath)
     {
         if (!File.Exists(absolutePath))
@@ -193,34 +195,55 @@ public partial class CharacterMasterViewModel : ObservableObject
         }
     }
 
-    /// <summary>Stores a clipboard-pasted image as PNG in characters/ (SPEC §6.3).</summary>
+    /// <summary>Ingests a clipboard bitmap: downscales to ≤256×256, stores PNG bytes (§6.3).</summary>
     public string? ApplyBitmap(CharacterMasterRowViewModel row, Avalonia.Media.Imaging.Bitmap bitmap)
     {
-        var dir = Path.Combine(_projectFolder, "characters");
-        Directory.CreateDirectory(dir);
-        var name = string.IsNullOrWhiteSpace(row.Name) ? "c" : Sanitize(row.Name);
-        var slug = name.Length > 20 ? name[..20] : name;
-        var fileName = $"{slug}-{Guid.NewGuid().ToString("N")[..8]}.png";
-        var target = Path.Combine(dir, fileName);
+        var png = DownscaleAndEncode(bitmap);
+        if (png is null)
+        {
+            return null;
+        }
 
+        _rowImages[row] = png;
+        SetPreview(row, png);
+        return $"png blob {png.Length} bytes";
+    }
+
+    /// <summary>Downscales to ≤256×256 preserving aspect ratio; returns PNG bytes (or null on failure).</summary>
+    private static byte[]? DownscaleAndEncode(Avalonia.Media.Imaging.Bitmap bitmap)
+    {
         try
         {
-            bitmap.Save(target);
+            var srcW = bitmap.PixelSize.Width;
+            var srcH = bitmap.PixelSize.Height;
+            var scale = Math.Min(1.0, (double)MaxImageDimension / Math.Max(srcW, srcH));
+            var dstW = Math.Max(1, (int)Math.Round(srcW * scale));
+            var dstH = Math.Max(1, (int)Math.Round(srcH * scale));
+
+            // Decode through Skia (the App is the only project that may reference SkiaSharp).
+            // Avalonia Bitmap → PNG bytes → SKBitmap → canvas-resize → PNG.
+            using var enc = new MemoryStream();
+            bitmap.Save(enc);
+            enc.Position = 0;
+            using var src = SKBitmap.Decode(enc);
+            if (src is null)
+            {
+                return null;
+            }
+
+            using var dst = new SKBitmap(dstW, dstH, SKColorType.Rgba8888, SKAlphaType.Premul);
+            using var canvas = new SKCanvas(dst);
+            canvas.DrawBitmap(src, new SKRect(0, 0, dstW, dstH));
+
+            using var img = SKImage.FromBitmap(dst);
+            using var data = img.Encode(SKEncodedImageFormat.Png, 90);
+            using var pngStream = new MemoryStream();
+            data.SaveTo(pngStream);
+            return pngStream.ToArray();
         }
         catch
         {
             return null;
         }
-
-        row.Image = Path.Combine("characters", fileName);
-        row.ImageAbsolute = target;
-        row.ImagePreview = bitmap;
-        return target;
-    }
-
-    private static string Sanitize(string s)
-    {
-        var chars = s.Where(c => char.IsLetterOrDigit(c)).ToArray();
-        return chars.Length == 0 ? "c" : new string(chars);
     }
 }

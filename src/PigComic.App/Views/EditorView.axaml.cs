@@ -142,6 +142,7 @@ public partial class EditorView : Window
             _matches.TbInsertRequested += OnTbInsertRequested;
             _matches.BubblesChanged += OnBubblesChanged;
             _pane.Characters.AddToMasterRequested += OnAddToMasterRequested;
+            FunctionPane.OpenMasterRequested += OnOpenMaster;
             FunctionPane.DataContext = _pane;
 
             StartAutosave(session);
@@ -435,6 +436,17 @@ public partial class EditorView : Window
         new CharacterMasterWindow(_projectFolder, name).Show();
     }
 
+    /// <summary>Direct entrance to the master editor from the function pane (button or Ctrl+Shift+M).</summary>
+    private void OnOpenMaster()
+    {
+        if (_projectFolder is null)
+        {
+            return;
+        }
+
+        new CharacterMasterWindow(_projectFolder).Show();
+    }
+
     /// <summary>Ctrl+1..9 inserts the Nth result (SPEC §9/§14.6): fire-and-forget key routing.</summary>
     protected override void OnKeyDown(KeyEventArgs e)
     {
@@ -494,6 +506,11 @@ public partial class EditorView : Window
         else if (PigComic.App.KeyBindings.IsFocusNotes(e))
         {
             FunctionPane.FocusNotes();
+            e.Handled = true;
+        }
+        else if (PigComic.App.KeyBindings.IsOpenMaster(e))
+        {
+            OnOpenMaster();
             e.Handled = true;
         }
     }

@@ -150,6 +150,7 @@ public partial class SegmentListView : UserControl
             }
         };
         editor.ToggleLockRequested += (_, _) => Confirm?.ToggleLockSelected();
+        editor.BoundaryCrossRequested += (_, dir) => OnEditorBoundaryCross(row, editor, dir);
         editor.GotFocus += (_, _) =>
         {
             _lastFocusedEditor = editor;
@@ -180,6 +181,40 @@ public partial class SegmentListView : UserControl
 
             FocusPartEditor(row, target);
         };
+    }
+
+    /// <summary>
+    /// D-60: ArrowUp/Down crossing a textbox border moves focus to the prev/next textbox
+    /// (prev/next part within the row, or the prev/next bubble's nearest part), and the
+    /// caret lands so the user can keep editing immediately.
+    /// </summary>
+    private void OnEditorBoundaryCross(BubbleRowViewModel row, PartTextEditor editor, BoundaryDirection dir)
+    {
+        if (editor.DataContext is PartViewModel part)
+        {
+            // Within the same row: move to the prev/next part.
+            var target = dir == BoundaryDirection.Up ? part.Index - 1 : part.Index + 1;
+            if (target >= 1 && target <= row.Parts.Count)
+            {
+                FocusPartEditor(row, target);
+                return;
+            }
+        }
+
+        // Cross to the prev/next bubble's nearest part.
+        if (DataContext is SegmentListViewModel vm)
+        {
+            vm.MoveSelection(dir == BoundaryDirection.Up ? -1 : 1);
+            var next = vm.SelectedBubble;
+            if (next is null)
+            {
+                return;
+            }
+
+            // Land on the last part when going up, the first part when going down.
+            var targetPart = dir == BoundaryDirection.Up ? next.Parts.Count : 1;
+            Dispatcher.UIThread.Post(() => FocusPartEditor(next, targetPart), DispatcherPriority.Background);
+        }
     }
 
     /// <summary>

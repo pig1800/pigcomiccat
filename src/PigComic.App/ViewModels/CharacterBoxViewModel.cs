@@ -16,7 +16,7 @@ public partial class CharacterBoxViewModel : ObservableObject
 {
     private readonly ChapterSession _session;
     private readonly SegmentListViewModel _segments;
-    private readonly CharacterList? _master;
+    private readonly CharacterStore? _master;
 
     public CharacterBoxViewModel(ChapterSession session, SegmentListViewModel segments, string? projectFolder)
     {
@@ -24,10 +24,9 @@ public partial class CharacterBoxViewModel : ObservableObject
         _segments = segments;
         if (projectFolder is not null)
         {
-            var path = Path.Combine(projectFolder, CharacterList.FileName);
             try
             {
-                _master = File.Exists(path) ? CharacterList.Load(path) : CharacterList.CreateNew(path);
+                _master = new CharacterStore(Path.Combine(projectFolder, CharacterStore.FileName));
             }
             catch
             {
@@ -74,7 +73,7 @@ public partial class CharacterBoxViewModel : ObservableObject
     public bool HasMaster => _master is not null;
 
     public IReadOnlyList<string> MasterNames
-        => _master?.Characters.Select(c => c.Name).Where(n => n.Length > 0).Distinct(StringComparer.Ordinal).ToList()
+        => _master?.LoadAll().Select(c => c.Name).Where(n => n.Length > 0).Distinct(StringComparer.Ordinal).ToList()
            ?? [];
 
     partial void OnQueryChanged(string value)
@@ -111,7 +110,6 @@ public partial class CharacterBoxViewModel : ObservableObject
         Suggestions = [];
         SuggestionsVisible = false;
     }
-
     /// <summary>Sets the selected bubble's speaker (chapter button or committed field).</summary>
     public void ApplyCharacter(string name)
     {
@@ -136,6 +134,43 @@ public partial class CharacterBoxViewModel : ObservableObject
         {
             MasterOfferName = name;
         }
+    }
+
+    /// <summary>Clears the selected bubble's @character (the "✕ Clear" button).</summary>
+    public void EraseCharacter()
+    {
+        var row = _segments.SelectedBubble;
+        if (row is null || row.Bubble.Character is null)
+        {
+            return;
+        }
+
+        BubbleMutations.SetCharacter(_session.Document, row.Bubble, null);
+        row.MarkDirty();
+        row.NotifyCharacterChanged();
+        CharacterChanged?.Invoke();
+        RefreshChapterNames();
+    }
+
+    /// <summary>Removes a name from the chapter &lt;characters&gt; list (right-click → remove).</summary>
+    public void RemoveChapterName(string name)
+    {
+        if (name.Length == 0)
+        {
+            return;
+        }
+
+        var chars = _session.Document.Model.Characters;
+        if (!chars.Remove(name))
+        {
+            return;
+        }
+
+        // Also drop the <character> element from content.xml.
+        var el = _session.Document.ContentXml.Root?.Element("characters");
+        el?.Elements("character").FirstOrDefault(c => (string?)c.Attribute("name") == name)?.Remove();
+        _session.MarkDirty();
+        RefreshChapterNames();
     }
 
     /// <summary>Moves the suggestion highlight (ArrowUp/Down).</summary>

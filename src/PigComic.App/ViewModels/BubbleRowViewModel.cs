@@ -37,7 +37,7 @@ public partial class BubbleRowViewModel : ObservableObject
     public string Id => Bubble.Id;
     public int Order => Bubble.Order;
 
-    public string KindText => Bubble.Kind.ToString();
+    public string KindText => Bubble.KindRaw;
     public string CharacterText => Bubble.Character ?? "";
     public string SourceText => Bubble.SourceText;
 
@@ -191,6 +191,20 @@ public partial class BubbleRowViewModel : ObservableObject
         }
 
         BubbleMutations.SetKind(Bubble, kind);
+        _session.MarkDirty();
+        OnPropertyChanged(nameof(KindText));
+        NotifyStatus();
+    }
+
+    /// <summary>Arbitrary kind string (D-59): the 6 known values or a custom one.</summary>
+    public void SetKindRaw(string kind)
+    {
+        if (Bubble.KindRaw == kind)
+        {
+            return;
+        }
+
+        BubbleMutations.SetKindRaw(Bubble, kind);
         _session.MarkDirty();
         OnPropertyChanged(nameof(KindText));
         NotifyStatus();

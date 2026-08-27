@@ -63,6 +63,13 @@ public class PartTextEditor : TextBox
     /// <summary>Ctrl+L: toggle Locked (SPEC §14.4 / D-16).</summary>
     public event EventHandler? ToggleLockRequested;
 
+    /// <summary>
+    /// Raised when ArrowUp/Down would cross the editor's top/bottom boundary (caret on the
+    /// first/last line): the editor asks the host to move focus to the previous/next textbox
+    /// so the user can keep editing without leaving the keyboard (owner directive, D-60).
+    /// </summary>
+    public event EventHandler<BoundaryDirection>? BoundaryCrossRequested;
+
     /// <summary>Checklist instrumentation: every confirm fired while composing would show here.</summary>
     public long ConfirmCount { get; private set; }
 
@@ -257,6 +264,29 @@ public class PartTextEditor : TextBox
             }
         }
 
+        // D-60: ArrowUp/Down at the first/last line crosses to the prev/next textbox.
+        if (!e.Handled && (e.Key == Key.Up || e.Key == Key.Down) && _presenter?.TextLayout is { } layout)
+        {
+            var hit = layout.HitTestTextPosition(CaretIndex);
+            var firstLineTop = 0.0;
+            var lastLineTop = layout.TextLines.Count > 0
+                ? layout.TextLines.Take(layout.TextLines.Count - 1).Sum(l => l.Height)
+                : 0.0;
+            if (e.Key == Key.Up && hit.Y <= firstLineTop + 0.5)
+            {
+                e.Handled = true;
+                BoundaryCrossRequested?.Invoke(this, BoundaryDirection.Up);
+                return;
+            }
+
+            if (e.Key == Key.Down && hit.Y >= lastLineTop - 0.5)
+            {
+                e.Handled = true;
+                BoundaryCrossRequested?.Invoke(this, BoundaryDirection.Down);
+                return;
+            }
+        }
+
         base.OnKeyDown(e);
     }
 }
@@ -267,6 +297,13 @@ public enum ConfirmVariant
     Enter,
     CtrlEnter,
     CtrlShiftEnter,
+}
+
+/// <summary>Which way an Arrow key would cross the editor boundary (D-60).</summary>
+public enum BoundaryDirection
+{
+    Up,
+    Down,
 }
 
 public static class PartTextEditorExtensions

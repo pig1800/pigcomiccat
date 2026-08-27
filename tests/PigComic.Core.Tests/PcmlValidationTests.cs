@@ -61,7 +61,6 @@ public class PcmlValidationTests : IDisposable
     [InlineData("E05-slash-file")]
     [InlineData("E05-missing-media")]
     [InlineData("E06-non-contiguous")]
-    [InlineData("E07-bad-kind")]
     [InlineData("E07-bad-status")]
     public void Error_Codes_Open_ReadOnly(string which)
     {
@@ -80,7 +79,7 @@ public class PcmlValidationTests : IDisposable
             "E05-slash-file" => Replace("file=\"a.jpg\"", "file=\"img/x.jpg\""),
             "E05-missing-media" => Replace("file=\"a.jpg\"", "file=\"zz.jpg\""),
             "E06-non-contiguous" => Replace("<target><part index=\"1\"><marker x=\"0\" y=\"0\"/><text></text></part></target>", "<target><part index=\"1\"><marker x=\"0\" y=\"0\"/><text></text></part><part index=\"2\"><marker x=\"0\" y=\"50\"/><text></text></part><part index=\"2\"><marker x=\"0\" y=\"100\"/><text></text></part></target>"),
-            "E07-bad-kind" => Replace("kind=\"Speech\"", "kind=\"Banana\""),
+            // D-59: arbitrary kind values are allowed; the E07-bad-kind case was removed.
             "E07-bad-status" => Replace("status=\"Untranslated\"", "status=\"Banana\""),
             _ => ValidXml,
         };

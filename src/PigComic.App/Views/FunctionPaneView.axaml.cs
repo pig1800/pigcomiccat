@@ -43,28 +43,29 @@ public partial class FunctionPaneView : UserControl
         }
     }
 
-    private void SyncKindButtons(BubbleKind kind)
+    private void SyncKindButtons(string rawKind)
     {
         _syncingKind = true;
-        KindSpeech.IsChecked = kind == BubbleKind.Speech;
-        KindThought.IsChecked = kind == BubbleKind.Thought;
-        KindNarration.IsChecked = kind == BubbleKind.Narration;
-        KindSfx.IsChecked = kind == BubbleKind.Sfx;
-        KindSign.IsChecked = kind == BubbleKind.Sign;
-        KindNote.IsChecked = kind == BubbleKind.Note;
+        KindSpeech.IsChecked = rawKind == "Speech";
+        KindThought.IsChecked = rawKind == "Thought";
+        KindNarration.IsChecked = rawKind == "Narration";
+        KindSfx.IsChecked = rawKind == "Sfx";
+        KindSign.IsChecked = rawKind == "Sign";
+        KindNote.IsChecked = rawKind == "Note";
         _syncingKind = false;
     }
 
     private void OnKindToggle(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
     {
-        if (_syncingKind || sender is not ToggleButton tb || !tb.IsChecked.GetValueOrDefault() ||
-            PaneVm is not { } vm || tb.Tag is not string tag ||
-            !Enum.TryParse<BubbleKind>(tag, out var kind))
+        if (_syncingKind || sender is not ToggleButton tb || !tb.IsChecked.GetValueOrDefault())
         {
             return;
         }
 
-        vm.Kind = kind;
+        if (tb.Tag is string tag && PaneVm is { } vm)
+        {
+            vm.Kind = tag;
+        }
     }
 
     /// <summary>Ctrl+Shift+K focus jump (SPEC §14.6).</summary>
@@ -149,6 +150,26 @@ public partial class FunctionPaneView : UserControl
             PaneVm?.Characters.ApplyCharacter(name);
         }
     }
+
+    private void OnEraseCharacterClick(object? sender, RoutedEventArgs e)
+        => PaneVm?.Characters.EraseCharacter();
+
+    /// <summary>Right-click → "Remove from chapter list" on the context-menu'd button.</summary>
+    private void OnRemoveChapterNameClick(object? sender, RoutedEventArgs e)
+    {
+        // The context menu was attached to the chapter-name button; its DataContext is the name.
+        if (ChapterNameMenu?.DataContext is string name)
+        {
+            PaneVm?.Characters.RemoveChapterName(name);
+        }
+    }
+
+    /// <summary>Opens the master character editor from within the editor (D-58/direct entrance).</summary>
+    private void OnOpenMasterClick(object? sender, RoutedEventArgs e)
+        => OpenMasterRequested?.Invoke();
+
+    /// <summary>Raised when the user wants the master editor opened (button or Ctrl+Shift+M).</summary>
+    public event Action? OpenMasterRequested;
 
     private void OnOfferAddClick(object? sender, RoutedEventArgs e)
         => PaneVm?.Characters.AcceptMasterOffer();

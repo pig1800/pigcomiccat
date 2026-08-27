@@ -99,12 +99,24 @@ public sealed class Bubble
         }
     }
 
+    /// <summary>The known-kind enum (defaults to Speech when the raw value is unrecognized).</summary>
     public BubbleKind Kind
     {
         get => Enum.TryParse<BubbleKind>(_rawKind, out var v) ? v : BubbleKind.Speech;
         set
         {
             _rawKind = value.ToString();
+            _backing?.SetAttributeValue("kind", _rawKind);
+        }
+    }
+
+    /// <summary>The raw kind string (the 6 known values or an arbitrary user string, D-59).</summary>
+    public string KindRaw
+    {
+        get => _rawKind;
+        set
+        {
+            _rawKind = value ?? "";
             _backing?.SetAttributeValue("kind", _rawKind);
         }
     }

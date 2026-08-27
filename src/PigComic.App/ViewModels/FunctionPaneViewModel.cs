@@ -32,8 +32,9 @@ public partial class FunctionPaneViewModel : ObservableObject
         segments.SelectionChanged += OnSelectionChanged;
     }
 
+    /// <summary>The raw kind string (the 6 known values or an arbitrary one, D-59).</summary>
     [ObservableProperty]
-    private BubbleKind _kind;
+    private string _kind = "";
 
     [ObservableProperty]
     private string _notes = "";
@@ -49,18 +50,18 @@ public partial class FunctionPaneViewModel : ObservableObject
     {
         if (row is null)
         {
-            Kind = default;
+            Kind = "";
             Notes = "";
             LlmComment = "";
             return;
         }
 
-        Kind = row.Bubble.Kind;
+        Kind = row.Bubble.KindRaw;
         Notes = row.Bubble.Notes;
         LlmComment = row.Bubble.LlmComment;
     }
 
-    partial void OnKindChanged(BubbleKind value) => _segments.SelectedBubble?.SetKind(value);
+    partial void OnKindChanged(string value) => _segments.SelectedBubble?.SetKindRaw(value);
 
     partial void OnNotesChanged(string value) => _segments.SelectedBubble?.SetNotes(value);
 

@@ -166,6 +166,14 @@ public static class BubbleMutations
         return new MutationRecord("SetKind", J(new { id = bubble.Id, before = before.ToString() }));
     }
 
+    /// <summary>Sets an arbitrary kind string (D-59): the 6 known values or a custom one.</summary>
+    public static MutationRecord SetKindRaw(Bubble bubble, string kind)
+    {
+        var before = bubble.KindRaw;
+        bubble.KindRaw = kind;
+        return new MutationRecord("SetKind", J(new { id = bubble.Id, before }));
+    }
+
     /// <summary>Sets the speaker; the name is auto-added to the chapter character list.</summary>
     public static MutationRecord SetCharacter(PcmlDocument doc, Bubble bubble, string? character)
     {
