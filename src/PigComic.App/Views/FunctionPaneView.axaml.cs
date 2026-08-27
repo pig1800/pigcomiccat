@@ -157,8 +157,8 @@ public partial class FunctionPaneView : UserControl
     /// <summary>Right-click → "Remove from chapter list" on the context-menu'd button.</summary>
     private void OnRemoveChapterNameClick(object? sender, RoutedEventArgs e)
     {
-        // The context menu was attached to the chapter-name button; its DataContext is the name.
-        if (ChapterNameMenu?.DataContext is string name)
+        // The menu item's DataContext flows from the button's DataContext (the name string).
+        if (sender is MenuItem mi && mi.DataContext is string name)
         {
             PaneVm?.Characters.RemoveChapterName(name);
         }

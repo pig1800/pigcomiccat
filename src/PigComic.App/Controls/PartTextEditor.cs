@@ -315,4 +315,17 @@ public static class PartTextEditorExtensions
         box.SelectionStart = 0;
         box.SelectionEnd = box.Text?.Length ?? 0;
     }
+
+    /// <summary>
+    /// Focuses with the caret at position 0 and nothing selected (D-60): used when focus
+    /// moves via keyboard (arrow keys, confirm-advance) so it does not fight with a mouse
+    /// click's caret placement. A mouse click places the caret at the click point normally.
+    /// </summary>
+    public static void FocusAtStart(this TextBox box)
+    {
+        box.Focus();
+        box.CaretIndex = 0;
+        box.SelectionStart = 0;
+        box.SelectionEnd = 0;
+    }
 }

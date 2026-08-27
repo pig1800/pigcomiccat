@@ -300,9 +300,10 @@ public partial class SegmentListView : UserControl
     private void FocusEditor(PartTextEditor editor)
     {
         // Set the TB-insert target synchronously; Focus()/GotFocus may be asynchronous in
-        // headless hosts, and the part-walk's contract is "focus moved to this editor".
+        // headless hosts. D-60: caret at 0, nothing selected — keyboard-driven focus never
+        // fights with a mouse click's caret placement.
         _lastFocusedEditor = editor;
-        editor.FocusAndSelectAll();
+        editor.FocusAtStart();
     }
 
     private void SelectRowFor(PartTextEditor editor, BubbleRowViewModel row)
