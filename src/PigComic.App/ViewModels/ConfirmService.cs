@@ -83,7 +83,9 @@ public sealed class ConfirmService
         _qa.RunOnBubble(row.Bubble);
         if (_tm is not null)
         {
-            _ = WriteTmAsync(row, target);
+            // D-61: store segmentation as \t-separated parts (a part's own text may contain \n).
+            var tmTarget = string.Join("\t", row.Bubble.Parts.Select(p => p.Text));
+            _ = WriteTmAsync(row, tmTarget);
         }
 
         MoveNext(skipConfirmed);

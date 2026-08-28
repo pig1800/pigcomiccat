@@ -72,6 +72,9 @@ public partial class CharacterBoxViewModel : ObservableObject
 
     public bool HasMaster => _master is not null;
 
+    /// <summary>The master character store (null when no project folder / corrupt).</summary>
+    public CharacterStore? Master => _master;
+
     public IReadOnlyList<string> MasterNames
         => _master?.LoadAll().Select(c => c.Name).Where(n => n.Length > 0).Distinct(StringComparer.Ordinal).ToList()
            ?? [];

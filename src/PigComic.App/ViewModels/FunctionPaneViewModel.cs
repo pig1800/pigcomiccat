@@ -1,6 +1,7 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using PigComic.App.Services;
 using PigComic.Core.Domain;
+using PigComic.Core.Project;
 using PigComic.Core.Tb;
 using PigComic.Core.Tm;
 
@@ -42,9 +43,18 @@ public partial class FunctionPaneViewModel : ObservableObject
     [ObservableProperty]
     private string _llmComment = "";
 
+    /// <summary>Read-only master-character info for the selected bubble's speaker (null when none).</summary>
+    [ObservableProperty]
+    private CharacterInfo? _selectedCharacterInfo;
+
     public bool HasLlmComment => LlmComment.Length > 0;
+    public bool HasCharacterInfo => SelectedCharacterInfo is not null;
+
+    /// <summary>The selected bubble's speaker name (for chapter-button highlight sync).</summary>
+    public string SelectedCharacterName => _segments.SelectedBubble?.Bubble.Character ?? "";
 
     partial void OnLlmCommentChanged(string value) => OnPropertyChanged(nameof(HasLlmComment));
+    partial void OnSelectedCharacterInfoChanged(CharacterInfo? value) => OnPropertyChanged(nameof(HasCharacterInfo));
 
     private void OnSelectionChanged(BubbleRowViewModel? row)
     {
@@ -53,12 +63,20 @@ public partial class FunctionPaneViewModel : ObservableObject
             Kind = "";
             Notes = "";
             LlmComment = "";
+            SelectedCharacterInfo = null;
             return;
         }
 
         Kind = row.Bubble.KindRaw;
         Notes = row.Bubble.Notes;
         LlmComment = row.Bubble.LlmComment;
+
+        // Look up the master character for the selected bubble's speaker.
+        var name = row.Bubble.Character;
+        var master = Characters.Master;
+        SelectedCharacterInfo = (name is not null && master is not null && master.Find(name) is { } mc)
+            ? CharacterInfo.From(mc)
+            : null;
     }
 
     partial void OnKindChanged(string value) => _segments.SelectedBubble?.SetKindRaw(value);
@@ -70,4 +88,13 @@ public partial class FunctionPaneViewModel : ObservableObject
         _segments.SelectedBubble?.ClearLlmComment();
         LlmComment = "";
     }
+}
+
+/// <summary>Read-only character info for the function pane (no image — §14.5).</summary>
+public sealed record CharacterInfo(
+    string Original, string Localized, string Pronunciation,
+    string Gender, string Age, string Chapter, string Pronoun, string Comments)
+{
+    public static CharacterInfo From(CharacterStore.MasterCharacter c)
+        => new(c.Name, c.Localized, c.Pronunciation, c.Gender, c.Age, c.FirstChapter, c.Pronoun, c.Comments);
 }

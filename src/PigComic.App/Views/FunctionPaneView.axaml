@@ -6,7 +6,7 @@
              x:Class="PigComic.App.Views.FunctionPaneView"
              x:DataType="vm:FunctionPaneViewModel">
     <DockPanel>
-        <!-- M7.3 LLM comment (SPEC §14.5 item 5) -->
+        <!-- LLM comment -->
         <StackPanel DockPanel.Dock="Bottom" Spacing="3" Margin="12,6,12,4"
                     IsVisible="{Binding HasLlmComment}">
             <DockPanel>
@@ -18,7 +18,7 @@
                        Foreground="#883366" Background="#14E3F2FD" Padding="6,3"/>
         </StackPanel>
 
-        <!-- M7.3 Notes (SPEC §14.5 item 4) -->
+        <!-- Notes -->
         <StackPanel DockPanel.Dock="Bottom" Spacing="3" Margin="12,4,12,4">
             <TextBlock Text="Notes" FontSize="11" Foreground="Gray"/>
             <controls:PartTextEditor x:Name="NotesField" Text="{Binding Notes, Mode=TwoWay}"
@@ -27,9 +27,8 @@
                                      Watermark="Translator notes…"/>
         </StackPanel>
 
-        <!-- M7.2 character box (spec §14.5 item 3) -->
+        <!-- Character box -->
         <StackPanel DockPanel.Dock="Bottom" Spacing="4" Margin="12,6,12,4">
-            <!-- "Add to master?" offer -->
             <DockPanel IsVisible="{Binding Characters.HasMasterOffer}">
                 <StackPanel Orientation="Horizontal" Spacing="6" DockPanel.Dock="Right">
                     <Button Content="Add" FontSize="11" Padding="8,1" Click="OnOfferAddClick"/>
@@ -39,7 +38,6 @@
                            FontSize="12" VerticalAlignment="Center" Foreground="#7A5B00"/>
             </DockPanel>
 
-            <!-- Name field + suggestion popup -->
             <TextBlock Text="Character" FontSize="11" Foreground="Gray"/>
             <controls:PartTextEditor x:Name="CharacterField" FontSize="13" Watermark="Type a name…"
                                      Text="{Binding Characters.Query, Mode=TwoWay}"
@@ -63,7 +61,7 @@
                         Click="OnOpenMasterClick" ToolTip.Tip="Open the master character editor (Ctrl+Shift+M)"/>
                 <TextBlock Text="Chapter characters:" FontSize="11" Foreground="Gray" VerticalAlignment="Center"/>
             </DockPanel>
-            <WrapPanel Margin="0,2,0,0">
+            <WrapPanel x:Name="ChapterButtonHost" Margin="0,2,0,0">
                 <Button Content="✕ Clear" FontSize="12" Padding="8,2" Margin="0,2,6,0"
                         Click="OnEraseCharacterClick" ToolTip.Tip="Clear the selected bubble's speaker"/>
                 <ItemsControl x:Name="ChapterButtons" ItemsSource="{Binding Characters.ChapterNames}">
@@ -74,22 +72,52 @@
                     </ItemsControl.ItemsPanel>
                     <ItemsControl.ItemTemplate>
                         <DataTemplate x:DataType="x:String">
-                            <Button Content="{Binding}" FontSize="12" Padding="8,2" Margin="0,2,6,0"
-                                    Click="OnChapterNameClick">
-                                <Button.ContextMenu>
+                            <ToggleButton Content="{Binding}" FontSize="12" Padding="8,2" Margin="0,2,6,0"
+                                          Click="OnChapterNameClick">
+                                <ToggleButton.ContextMenu>
                                     <ContextMenu>
                                         <MenuItem Header="Remove from chapter list"
                                                    Click="OnRemoveChapterNameClick"/>
                                     </ContextMenu>
-                                </Button.ContextMenu>
-                            </Button>
+                                </ToggleButton.ContextMenu>
+                            </ToggleButton>
                         </DataTemplate>
                     </ItemsControl.ItemTemplate>
                 </ItemsControl>
             </WrapPanel>
         </StackPanel>
 
-        <!-- M7.3 kind selector (spec §14.5 item 2) + arbitrary kind textbox (D-59) -->
+        <!-- Character info (read-only, between TM/TB and Kind) -->
+        <StackPanel DockPanel.Dock="Bottom" Spacing="2" Margin="12,4,12,4"
+                    IsVisible="{Binding HasCharacterInfo}">
+            <TextBlock Text="Character info" FontSize="11" Foreground="Gray"/>
+            <Border Background="#0A000000" BorderBrush="#22000000" BorderThickness="0,0,0,1" Padding="6,4">
+                <Grid ColumnDefinitions="80,*,80,*" RowDefinitions="Auto,Auto,Auto,Auto" Margin="0">
+                    <TextBlock Grid.Row="0" Grid.Column="0" Text="Original" FontSize="11" Foreground="Gray"/>
+                    <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding SelectedCharacterInfo.Original}" FontSize="12" TextWrapping="Wrap"/>
+                    <TextBlock Grid.Row="0" Grid.Column="2" Text="Gender" FontSize="11" Foreground="Gray"/>
+                    <TextBlock Grid.Row="0" Grid.Column="3" Text="{Binding SelectedCharacterInfo.Gender}" FontSize="12" TextWrapping="Wrap"/>
+
+                    <TextBlock Grid.Row="1" Grid.Column="0" Text="Localized" FontSize="11" Foreground="Gray"/>
+                    <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding SelectedCharacterInfo.Localized}" FontSize="12" TextWrapping="Wrap"/>
+                    <TextBlock Grid.Row="1" Grid.Column="2" Text="Age" FontSize="11" Foreground="Gray"/>
+                    <TextBlock Grid.Row="1" Grid.Column="3" Text="{Binding SelectedCharacterInfo.Age}" FontSize="12" TextWrapping="Wrap"/>
+
+                    <TextBlock Grid.Row="2" Grid.Column="0" Text="Pronunciation" FontSize="11" Foreground="Gray"/>
+                    <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding SelectedCharacterInfo.Pronunciation}" FontSize="12" TextWrapping="Wrap"/>
+                    <TextBlock Grid.Row="2" Grid.Column="2" Text="Chapter" FontSize="11" Foreground="Gray"/>
+                    <TextBlock Grid.Row="2" Grid.Column="3" Text="{Binding SelectedCharacterInfo.Chapter}" FontSize="12" TextWrapping="Wrap"/>
+
+                    <TextBlock Grid.Row="3" Grid.Column="0" Text="Pronoun" FontSize="11" Foreground="Gray"/>
+                    <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding SelectedCharacterInfo.Pronoun}" FontSize="12" TextWrapping="Wrap"/>
+                </Grid>
+            </Border>
+            <TextBlock Text="Comments" FontSize="11" Foreground="Gray" Margin="0,4,0,0"/>
+            <TextBlock Text="{Binding SelectedCharacterInfo.Comments}" FontSize="12" TextWrapping="Wrap"
+                       Foreground="#44000000" Margin="0,0,0,0"/>
+        </StackPanel>
+
+        <!-- Kind selector + custom textbox -->
         <StackPanel DockPanel.Dock="Bottom" Spacing="3" Margin="12,4,12,6">
             <TextBlock Text="Kind" FontSize="11" Foreground="Gray"/>
             <WrapPanel x:Name="KindButtons">

@@ -16,7 +16,8 @@ public sealed class MatchRowViewModel
 
         if (item.Tm is { } tm)
         {
-            TargetText = tm.TargetRaw.Replace("\n", "⏎");
+            // D-61: TM stores \t-separated segments; display replaces \t with ⏎ for readability.
+            TargetText = tm.TargetRaw.Replace("\t", "⏎").Replace("\n", "⏎");
             DiffRuns = SourceDiff.Build(tm.SourceRaw, querySource);
             MetaText = string.Join(" · ",
                 new[]

@@ -21,7 +21,7 @@
             <ListBox.ItemTemplate>
                 <DataTemplate x:DataType="vm:CharacterMasterRowViewModel">
                     <Border BorderBrush="#22000000" BorderThickness="0,0,0,1" Padding="4,6">
-                        <Grid ColumnDefinitions="150,110,70,70,110,110,*,32">
+                        <Grid ColumnDefinitions="150,144,70,70,90,110,*,32">
                             <StackPanel Grid.Column="0" Spacing="2" Margin="0,0,8,0">
                                 <TextBlock Text="Original" FontSize="11" Foreground="Gray"/>
                                 <controls:PartTextEditor Text="{Binding Name, Mode=TwoWay}" FontSize="13"/>
@@ -32,9 +32,9 @@
                             </StackPanel>
                             <StackPanel Grid.Column="1" Spacing="2" Margin="0,0,8,0">
                                 <TextBlock Text="Image" FontSize="11" Foreground="Gray"/>
-                                <Border BorderBrush="#33000000" BorderThickness="1" Width="72" Height="54"
+                                <Border BorderBrush="#33000000" BorderThickness="1" Width="144" Height="108"
                                         Background="#14000000" HorizontalAlignment="Left">
-                                    <Image Source="{Binding ImagePreview}" Stretch="Uniform" MaxWidth="68" MaxHeight="50"/>
+                                    <Image Source="{Binding ImagePreview}" Stretch="Uniform" MaxWidth="140" MaxHeight="104"/>
                                 </Border>
                                 <StackPanel Orientation="Horizontal" Spacing="4">
                                     <Button Content="Paste" FontSize="11" Padding="6,1" Click="OnPasteClick"/>
@@ -50,7 +50,7 @@
                                 <controls:PartTextEditor Text="{Binding Age, Mode=TwoWay}" FontSize="13"/>
                             </StackPanel>
                             <StackPanel Grid.Column="4" Spacing="2" Margin="0,0,8,0">
-                                <TextBlock Text="First chapter" FontSize="11" Foreground="Gray"/>
+                                <TextBlock Text="Chapter" FontSize="11" Foreground="Gray"/>
                                 <controls:PartTextEditor Text="{Binding FirstChapter, Mode=TwoWay}" FontSize="13"/>
                             </StackPanel>
                             <StackPanel Grid.Column="5" Spacing="2" Margin="0,0,8,0">

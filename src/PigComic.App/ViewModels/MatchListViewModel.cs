@@ -156,11 +156,17 @@ public partial class MatchListViewModel : ObservableObject
         }
     }
 
-    /// <summary>D-12: TM insert replaces the whole target, collapses to 1 part, status → Draft.</summary>
+    /// <summary>D-12/D-61: TM insert replaces the whole target; \t-separated segments restore the part split.</summary>
     private void ReplaceTargetWith(BubbleRowViewModel bubble, string target)
     {
-        BubbleMutations.SetPartCount(bubble.Bubble, 1);
-        bubble.Bubble.Parts[0].Text = target;
+        var segments = target.Split('\t');
+        var count = Math.Clamp(segments.Length, 1, 3);
+        BubbleMutations.SetPartCount(bubble.Bubble, count);
+        for (var i = 0; i < count; i++)
+        {
+            bubble.Bubble.Parts[i].Text = segments[i];
+        }
+
         BubbleMutations.SetStatus(bubble.Bubble, BubbleStatus.Draft);
         bubble.RefreshParts();
         bubble.MarkDirty();

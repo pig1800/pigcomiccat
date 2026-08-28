@@ -1,8 +1,10 @@
+using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Media;
+using Avalonia.VisualTree;
 using PigComic.App.Controls;
 using PigComic.App.ViewModels;
 using PigComic.Core.Domain;
@@ -40,6 +42,33 @@ public partial class FunctionPaneView : UserControl
         if (e.PropertyName == nameof(FunctionPaneViewModel.Kind) && PaneVm is { } vm)
         {
             SyncKindButtons(vm.Kind);
+        }
+
+        if (e.PropertyName == nameof(FunctionPaneViewModel.SelectedCharacterInfo) ||
+            e.PropertyName == nameof(FunctionPaneViewModel.Characters.ChapterNames))
+        {
+            SyncChapterButtonHighlights();
+        }
+    }
+
+    /// <summary>Highlights the chapter-name ToggleButton matching the selected bubble's speaker.</summary>
+    private void SyncChapterButtonHighlights()
+    {
+        var selected = PaneVm?.SelectedCharacterName;
+        foreach (var tb in FindToggleButtons(ChapterButtonHost))
+        {
+            tb.IsChecked = tb.DataContext is string name && name == selected;
+        }
+    }
+
+    private static IEnumerable<ToggleButton> FindToggleButtons(Visual root)
+    {
+        foreach (var d in root.GetVisualDescendants())
+        {
+            if (d is ToggleButton tb)
+            {
+                yield return tb;
+            }
         }
     }
 
