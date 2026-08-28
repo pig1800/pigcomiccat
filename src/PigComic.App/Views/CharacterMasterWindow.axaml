@@ -41,7 +41,7 @@
                                     <Button Content="Browse…" FontSize="11" Padding="6,1" Click="OnBrowseClick"/>
                                 </StackPanel>
                             </StackPanel>
-                            <StackPanel Grid.Column="2" Spacing="2" Margin="0,0,8,0">
+                            <StackPanel Grid.Column="2" Spacing="2" Margin="8,0,8,0">
                                 <TextBlock Text="Gender" FontSize="11" Foreground="Gray"/>
                                 <controls:PartTextEditor Text="{Binding Gender, Mode=TwoWay}" FontSize="13"/>
                             </StackPanel>

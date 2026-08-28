@@ -4,6 +4,7 @@ using Avalonia.Controls.Primitives;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Media;
+using Avalonia.Threading;
 using Avalonia.VisualTree;
 using PigComic.App.Controls;
 using PigComic.App.ViewModels;
@@ -33,8 +34,16 @@ public partial class FunctionPaneView : UserControl
         if (PaneVm is { } vm)
         {
             vm.PropertyChanged += OnVmPropertyChanged;
+            vm.Characters.CharacterChanged += OnCharacterChanged;
             SyncKindButtons(vm.Kind);
+            SyncChapterButtonHighlights();
         }
+    }
+
+    private void OnCharacterChanged()
+    {
+        // After ApplyCharacter/EraseCharacter, re-highlight the matching chapter button.
+        Dispatcher.UIThread.Post(SyncChapterButtonHighlights, DispatcherPriority.Background);
     }
 
     private void OnVmPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
@@ -44,8 +53,7 @@ public partial class FunctionPaneView : UserControl
             SyncKindButtons(vm.Kind);
         }
 
-        if (e.PropertyName == nameof(FunctionPaneViewModel.SelectedCharacterInfo) ||
-            e.PropertyName == nameof(FunctionPaneViewModel.Characters.ChapterNames))
+        if (e.PropertyName == nameof(FunctionPaneViewModel.SelectedCharacterInfo))
         {
             SyncChapterButtonHighlights();
         }
