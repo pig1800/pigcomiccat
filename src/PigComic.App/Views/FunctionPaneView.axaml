@@ -108,24 +108,24 @@
                     IsVisible="{Binding HasCharacterInfo}">
             <TextBlock Text="Character info" FontSize="11" Foreground="Gray"/>
             <Border Background="#0A000000" BorderBrush="#22000000" BorderThickness="0,0,0,1" Padding="6,4">
-                <Grid ColumnDefinitions="65,*,155,*" RowDefinitions="Auto,Auto,Auto,Auto" Margin="0">
-                    <TextBlock Grid.Row="0" Grid.Column="0" Text="Original" FontSize="11" Foreground="Gray" Margin="0,0,4,0"/>
-                    <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding SelectedCharacterInfo.Original}" FontSize="12" TextWrapping="Wrap"/>
-                    <TextBlock Grid.Row="0" Grid.Column="2" Text="Gender" FontSize="11" Foreground="Gray" Margin="0,0,4,0"/>
-                    <TextBlock Grid.Row="0" Grid.Column="3" Text="{Binding SelectedCharacterInfo.Gender}" FontSize="12" TextWrapping="Wrap"/>
+                <Grid ColumnDefinitions="65,120,65,120" RowDefinitions="Auto,Auto,Auto,Auto" Margin="0">
+                    <TextBlock Grid.Row="0" Grid.Column="0" Text="Original" FontSize="11" Foreground="Gray" Margin="0,1,4,1"/>
+                    <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding SelectedCharacterInfo.Original}" FontSize="12" TextWrapping="Wrap" Margin="0,1,12,1"/>
+                    <TextBlock Grid.Row="0" Grid.Column="2" Text="Gender" FontSize="11" Foreground="Gray" Margin="0,1,4,1"/>
+                    <TextBlock Grid.Row="0" Grid.Column="3" Text="{Binding SelectedCharacterInfo.Gender}" FontSize="12" TextWrapping="Wrap" Margin="0,1,0,1"/>
 
-                    <TextBlock Grid.Row="1" Grid.Column="0" Text="Localized" FontSize="11" Foreground="Gray" Margin="0,0,4,0"/>
-                    <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding SelectedCharacterInfo.Localized}" FontSize="12" TextWrapping="Wrap"/>
-                    <TextBlock Grid.Row="1" Grid.Column="2" Text="Age" FontSize="11" Foreground="Gray" Margin="0,0,4,0"/>
-                    <TextBlock Grid.Row="1" Grid.Column="3" Text="{Binding SelectedCharacterInfo.Age}" FontSize="12" TextWrapping="Wrap"/>
+                    <TextBlock Grid.Row="1" Grid.Column="0" Text="Localized" FontSize="11" Foreground="Gray" Margin="0,1,4,1"/>
+                    <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding SelectedCharacterInfo.Localized}" FontSize="12" TextWrapping="Wrap" Margin="0,1,12,1"/>
+                    <TextBlock Grid.Row="1" Grid.Column="2" Text="Age" FontSize="11" Foreground="Gray" Margin="0,1,4,1"/>
+                    <TextBlock Grid.Row="1" Grid.Column="3" Text="{Binding SelectedCharacterInfo.Age}" FontSize="12" TextWrapping="Wrap" Margin="0,1,0,1"/>
 
-                    <TextBlock Grid.Row="2" Grid.Column="0" Text="Pronounced" FontSize="11" Foreground="Gray" Margin="0,0,4,0"/>
-                    <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding SelectedCharacterInfo.Pronunciation}" FontSize="12" TextWrapping="Wrap"/>
-                    <TextBlock Grid.Row="2" Grid.Column="2" Text="Chapter" FontSize="11" Foreground="Gray" Margin="0,0,4,0"/>
-                    <TextBlock Grid.Row="2" Grid.Column="3" Text="{Binding SelectedCharacterInfo.Chapter}" FontSize="12" TextWrapping="Wrap"/>
+                    <TextBlock Grid.Row="2" Grid.Column="0" Text="Pronounced" FontSize="11" Foreground="Gray" Margin="0,1,4,1"/>
+                    <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding SelectedCharacterInfo.Pronunciation}" FontSize="12" TextWrapping="Wrap" Margin="0,1,12,1"/>
+                    <TextBlock Grid.Row="2" Grid.Column="2" Text="Chapter" FontSize="11" Foreground="Gray" Margin="0,1,4,1"/>
+                    <TextBlock Grid.Row="2" Grid.Column="3" Text="{Binding SelectedCharacterInfo.Chapter}" FontSize="12" TextWrapping="Wrap" Margin="0,1,0,1"/>
 
-                    <TextBlock Grid.Row="3" Grid.Column="0" Text="Pronoun" FontSize="11" Foreground="Gray" Margin="0,0,4,0"/>
-                    <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding SelectedCharacterInfo.Pronoun}" FontSize="12" TextWrapping="Wrap"/>
+                    <TextBlock Grid.Row="3" Grid.Column="0" Text="Pronoun" FontSize="11" Foreground="Gray" Margin="0,1,4,1"/>
+                    <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding SelectedCharacterInfo.Pronoun}" FontSize="12" TextWrapping="Wrap" Margin="0,1,12,1"/>
                 </Grid>
             </Border>
             <TextBlock Text="Comments" FontSize="11" Foreground="Gray" Margin="0,4,0,0"/>

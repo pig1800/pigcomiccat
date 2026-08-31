@@ -55,7 +55,8 @@ public partial class FunctionPaneView : UserControl
 
         if (e.PropertyName == nameof(FunctionPaneViewModel.SelectedCharacterInfo))
         {
-            SyncChapterButtonHighlights();
+            // Post to Background so the chapter ToggleButtons are realized in the visual tree.
+            Dispatcher.UIThread.Post(SyncChapterButtonHighlights, DispatcherPriority.Background);
         }
     }
 

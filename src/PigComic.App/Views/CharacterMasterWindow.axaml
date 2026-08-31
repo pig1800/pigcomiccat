@@ -45,19 +45,19 @@
                                 <TextBlock Text="Gender" FontSize="11" Foreground="Gray"/>
                                 <controls:PartTextEditor Text="{Binding Gender, Mode=TwoWay}" FontSize="13"/>
                             </StackPanel>
-                            <StackPanel Grid.Column="3" Spacing="2" Margin="0,0,8,0">
+                            <StackPanel Grid.Column="3" Spacing="2" Margin="8,0,8,0">
                                 <TextBlock Text="Age" FontSize="11" Foreground="Gray"/>
                                 <controls:PartTextEditor Text="{Binding Age, Mode=TwoWay}" FontSize="13"/>
                             </StackPanel>
-                            <StackPanel Grid.Column="4" Spacing="2" Margin="0,0,8,0">
+                            <StackPanel Grid.Column="4" Spacing="2" Margin="8,0,8,0">
                                 <TextBlock Text="Chapter" FontSize="11" Foreground="Gray"/>
                                 <controls:PartTextEditor Text="{Binding FirstChapter, Mode=TwoWay}" FontSize="13"/>
                             </StackPanel>
-                            <StackPanel Grid.Column="5" Spacing="2" Margin="0,0,8,0">
+                            <StackPanel Grid.Column="5" Spacing="2" Margin="8,0,8,0">
                                 <TextBlock Text="Pronoun" FontSize="11" Foreground="Gray"/>
                                 <controls:PartTextEditor Text="{Binding Pronoun, Mode=TwoWay}" FontSize="13"/>
                             </StackPanel>
-                            <StackPanel Grid.Column="6" Spacing="2" Margin="0,0,8,0">
+                            <StackPanel Grid.Column="6" Spacing="2" Margin="8,0,8,0">
                                 <TextBlock Text="Comments" FontSize="11" Foreground="Gray"/>
                                 <controls:PartTextEditor Text="{Binding Comments, Mode=TwoWay}" FontSize="13" MultiLine="True" MinHeight="46"/>
                             </StackPanel>
