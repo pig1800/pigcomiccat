@@ -344,12 +344,13 @@ Milestone order is risk-ordered and fixed. M2 was the gate for M5–M11; it reco
 
 ---
 
-## M8 — Mechanical QA, repetition, find/replace, stats
+## M8 — Mechanical QA, repetition, find/replace, stats ▶️ STARTED 2026-08-31 (M8.1 done)
 
-### M8.1 Counter port
+### M8.1 Counter port ✅ DONE 2026-08-31
 - **Files**: `src/PigComic.Core/Counting/LanMangaCounter.cs`, `ICounter.cs`, `CountResult.cs`.
 - **Behavior**: SPEC §11 exactly (D-14 deltas).
 - **Acceptance**: `CounterTests` — full §11.1 table.
+- **Delivered 2026-08-31**: `LanMangaCounter` (implements `ICounter.Count(text)` returning `CountResult(MemoQ, MSWord)`; the shared `Preprocess` applies the ASCII-run collapse `[!-~]+ → 一` then strips U+0020 only; MemoQ counts UTF-32 code points inside the ten CJK ideograph blocks, MSWord counts UTF-16 units minus U+2013/U+2014). All 10 §11.1 rows pass; tests also assert the MemoQ ≤ MSWord guarantee, the empty-text zero case and instance/static agreement. Baseline after: build clean, **233/233 tests** (was 220 — 13 new CounterTests), smoke 27/27.
 
 ### M8.2 VisualLength + QA engine
 - **Files**: `src/PigComic.Core/Qa/VisualLength.cs`, `QaEngine.cs`, `QaIssue.cs`, `QaConfig.cs` (bound from ProjectSettings).
