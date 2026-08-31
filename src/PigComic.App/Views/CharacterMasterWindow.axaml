@@ -22,7 +22,7 @@
                 <DataTemplate x:DataType="vm:CharacterMasterRowViewModel">
                     <Border BorderBrush="#22000000" BorderThickness="0,0,0,1" Padding="4,6">
                         <Grid ColumnDefinitions="150,144,70,70,90,110,*,32">
-                            <StackPanel Grid.Column="0" Spacing="2" Margin="0,0,8,0">
+                            <StackPanel Grid.Column="0" Spacing="2" Margin="8,0,8,0">
                                 <TextBlock Text="Original" FontSize="11" Foreground="Gray"/>
                                 <controls:PartTextEditor Text="{Binding Name, Mode=TwoWay}" FontSize="13"/>
                                 <TextBlock Text="Localized" FontSize="11" Foreground="Gray"/>
@@ -30,7 +30,7 @@
                                 <TextBlock Text="Pronunciation" FontSize="11" Foreground="Gray"/>
                                 <controls:PartTextEditor Text="{Binding Pronunciation, Mode=TwoWay}" FontSize="13"/>
                             </StackPanel>
-                            <StackPanel Grid.Column="1" Spacing="2" Margin="0,0,8,0">
+                            <StackPanel Grid.Column="1" Spacing="2" Margin="8,0,8,0">
                                 <TextBlock Text="Image" FontSize="11" Foreground="Gray"/>
                                 <Border BorderBrush="#33000000" BorderThickness="1" Width="144" Height="108"
                                         Background="#14000000" HorizontalAlignment="Left">

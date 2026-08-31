@@ -108,7 +108,7 @@
                     IsVisible="{Binding HasCharacterInfo}">
             <TextBlock Text="Character info" FontSize="11" Foreground="Gray"/>
             <Border Background="#0A000000" BorderBrush="#22000000" BorderThickness="0,0,0,1" Padding="6,4">
-                <Grid ColumnDefinitions="65,120,65,120" RowDefinitions="Auto,Auto,Auto,Auto" Margin="0">
+                <Grid ColumnDefinitions="75,120,65,120" RowDefinitions="Auto,Auto,Auto,Auto" Margin="0">
                     <TextBlock Grid.Row="0" Grid.Column="0" Text="Original" FontSize="11" Foreground="Gray" Margin="0,1,4,1"/>
                     <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding SelectedCharacterInfo.Original}" FontSize="12" TextWrapping="Wrap" Margin="0,1,12,1"/>
                     <TextBlock Grid.Row="0" Grid.Column="2" Text="Gender" FontSize="11" Foreground="Gray" Margin="0,1,4,1"/>
