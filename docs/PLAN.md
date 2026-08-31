@@ -2,10 +2,10 @@
 
 ## STATUS — READ THIS BEFORE ANYTHING ELSE (2026-08-25)
 
-**M5.1–M5.6, M6.1–M6.4 and M7.1–M7.3 CODE DONE 2026-08-24/25.** M5.1 acceptance PASSED;
-the M5.2–M5.6 batch, the M6.1–M6.4 acceptances and the M7 acceptances are **manual — owner
-batch test** (see the per-task notes; IME items need a real IME session). The owner cleared
-the M6 batch ("all bubble operations green") on 2026-08-25 after the D-55/56/57 fixes.
+**M5, M6 and M7 are CODE DONE and the owner confirmed the whole batch: "all green for
+existing milestones so far" (2026-08-25).** M5.1 acceptance PASSED; M6/M7 acceptances were
+owner-tested through several fix rounds (D-52…D-61) and cleared. The M5.2–M5.6 IME items
+still need a real IME session (§21 items 1–4) but nothing blocks progress.
 **Next task: M8** (mechanical QA, repetition, find/replace, stats). Do not go past the
 first task below that is not marked done.
 
@@ -16,59 +16,36 @@ first task below that is not marked done.
 | M4 project model, main view, dialogs, relink | ✅ **DONE — do not redo** |
 | M2.6 in-message IMM32 clause capture · M2.7 modern IME rendering | ✅ **DONE** — verified by the owner's gate run across MS-IME JA, ATOK, MS Pinyin and MS-IME Korean |
 | **M2.5 IME gate** | ✅ **PASSED 2026-08-24 — 6/6 recorded** (`docs/IME_REPORT.md`) |
-| **M5.1–M5.6** | ▶️ **CODE DONE 2026-08-24/25 — M5.1 PASSED; M5.2–M5.6 wait on the owner's batch test** |
-| **M6.1–M6.4** | ▶️ **CODE DONE 2026-08-25 — owner cleared the fix batch ("all bubble ops green")** |
-| **M7.1–M7.3** | ▶️ **CODE DONE 2026-08-25 — manual acceptance pending: owner** (master editor, character box, kind/notes/LLM) |
-| M8 – M11 | ⏸ open after the M5/M7 batches |
+| **M5.1–M5.6** | ✅ **CODE DONE — owner batch PASSED** (M5.1 PASSED; M5.2–M5.6 owner-cleared; IME items need a real session) |
+| **M6.1–M6.4** | ✅ **CODE DONE — owner cleared** ("all bubble operations green") |
+| **M7.1–M7.3** | ✅ **CODE DONE — owner cleared** (master editor, character box, kind/notes/LLM + refinement rounds) |
+| M8 – M11 | ⏸ **NEXT: M8** (mechanical QA, repetition, find/replace, stats) |
 | M-TSF (TSF text store) | ⏸ not started; Q7 resolved — stays scheduled after M6 (IMM32 path carries JA/ATOK today) |
 
 > **Model reform, 2026-08-25 (D-49/D-50/D-51).** A chapter no longer has pages: its images
-> are one continuous strip and every coordinate is a chapter-global strip coordinate. A
-> bubble is anchored by a **point** drawn as a thick cross, not a rectangle. The default
-> language pair is **zh-CN -> ja**. `.pcml` is schema **version 2**; version 1 is rejected,
-> not migrated (it never shipped). Task text below that predates the reform has been updated;
-> if you find a leftover mention of pages or regions, the SPEC wins — fix the plan.
+> are one continuous vertical **strip** and every coordinate is a **chapter-global strip
+> coordinate**. A bubble is anchored by a **point** drawn as a thick cross, not a rectangle.
+> The default language pair is **zh-CN → ja**. `.pcml` is schema **version 2**; version 1 is
+> rejected, not migrated (it never shipped). If you find a leftover mention of pages or
+> regions, the SPEC wins — fix the plan.
 
-Verified baseline at that commit: `dotnet build PigComic.sln` clean, **221/221 tests**,
-**`--smoke` 27/27** (M6 checks + the real-pointer placement + drag-to-reorder + M7 pane +
-CharacterMasterWindow checks added 2026-08-25). If those numbers differ when you start,
-something regressed — find out what before touching anything else.
+Verified baseline at that commit: `dotnet build PigComic.sln` clean, **220/220 tests**,
+**`--smoke` 27/27**. If those numbers differ when you start, something regressed — find
+out what before touching anything else.
 
-**If you are an executing model:** begin at **M8** (mechanical QA, repetition, find/replace,
-stats) after the owner clears the M5/M7 batches; until then the batch lists below are the
-manual test sheets. Do not re-run the finished milestones above, and do not re-open the IME
-work — the gate is closed and `src/PigComic.App/Ime/` is verified against four IMEs. If you
-touch any editable text field, it must be a `PartTextEditor` (SPEC §21.2); `--smoke` enforces
-that.
+**If you are an executing model:** begin at **M8.1 (counter port, SPEC §11)**. Do not re-run
+the finished milestones above, and do not re-open the IME work — the gate is closed and
+`src/PigComic.App/Ime/` is verified against four IMEs. If you touch any editable text field,
+it must be a `PartTextEditor` (SPEC §21.2); `--smoke` enforces that. Open owner items
+recorded below: the M5.2–M5.6 IME session, and "scroll wheel responds anywhere / pane sync"
+(pending, recorded for M8).
 
-**M5.2–M5.6 owner batch test** (Debug menu → "Editor: open example chapter"; the strip's
-colored bands are the synthetic test pattern, not a bug — bubble overlays draw on top):
-1. 3 rows in one flat reading-order list (no page headers, D-49); Ctrl+Up/Down moves; status bar updates.
-2. Click each cross → row selects; select a bubble whose marker is on the second strip image → the strip scrolls to it (no page switch, D-49).
-3. Type in a target → Draft; **Enter inserts a line break**; Ctrl+Enter on a non-last part
-   moves focus to the next part editor (no commit); Ctrl+Enter on the last part → Translated
-   + moves to the next available segment (the status-bar **"Skip confirmed"** checkbox governs
-   whether already-Translated/Reviewed bubbles are skipped; Locked are always skipped);
-   Ctrl+Shift+Enter → Reviewed (same part-walk); Ctrl+L locks (D-16 restore); Ctrl+Insert
-   copies source; confirm writes `bin/…/strips/tm.db` rows.
-4. TM box shows matches after confirms; Ctrl+1/double-click inserts (Draft); TB inserts at
-   caret; F2/double-click edits source inline (Enter/Esc).
-5. Ctrl+S saves ("Saved HH:mm"); the dirty dot shows unsaved; autosave fires on the
-   `project.json` interval (default 180 s; drop `autosaveSeconds` to 10 in
-   `bin/…/strips/project.json` to test).
-6. IME: JA composition inside a part editor passes §21 items 1–4 (real IME session).
+**Owner batch tests: M5.2–M5.6 / M6 / M7 are DONE and cleared** (per the STATUS above; the
+detailed sheets were in the git history). One residual item: the M5.2–M5.6 **IME session**
+(§21 items 1–4) needs a real IME run — the gate's own 6/6 passed, but the editor's part
+editors deserve the same eyes; it is the only untested acceptance of the whole batch.
 
-**M6.1–M6.4 owner batch test** (same example chapter):
-1. Drag each example bubble's cross; Esc mid-drag reverts; save + unzip to check the new marker coordinates (§15.1). Dragging a bubble's **main cross** past a neighbour's Y reorders the list; part-cross drags don't.
-2. Ctrl+B (crosshair) → click between two markers → new `u`-prefixed row appears between them, kind Speech, Untranslated; Shift+click stays armed; Ctrl+B again or Esc disarms (§15.2).
-3. Delete (image pane or list focused, not inside a text editor) → confirm dialog with source preview → row+cross gone, selection lands on a neighbour (§15.2).
-4. Alt+3 on a bubble → 3 stacked editors + 3 part crosses 48 px apart; Ctrl+Enter walks parts and commits only on the last; Alt+1 merges with `\n`s; Tab/Shift+Tab moves between parts, nothing at the ends; drag a part cross (bubble selected) moves only that part (§15.3).
-
-**M7 owner batch test** (same example chapter):
-1. Main window → project → "Master characters": add a row, Ctrl+V a screenshot into its image cell → PNG in `characters/`, grid shows it; duplicate name rejected inline; delete row with confirm (§16).
-2. Editor — function pane: (a) kind toggles change the bubble's kind and round-trip in the saved XML; (b) type `小` in the Character field → suggestion `小猪` appears; Enter commits; click a chapter-name button → `@character` set and the source-column header shows it; (c) type a brand-new name + Enter → appears in the chapter buttons and in saved `<characters>`, plus the "Add 『X』 to master list?" [Add/Not now] prompt (Add opens the master editor prefilled); (d) notes persist; (e) an `llmComment` in the .pcml displays and Clear empties it; Ctrl+Shift+K/C/N focus each section (§14.5/§14.6).
-
-**Owner todo (pending, recorded for M7):** scroll wheel should respond anywhere the mouse
+**Owner todo (pending, recorded for M8):** scroll wheel should respond anywhere the mouse
 points, and pane-synchronized scrolling once the edit pane exists.
 
 The owner's gate record and the per-IME evidence live in `docs/IME_REPORT.md`; the IME

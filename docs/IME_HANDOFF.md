@@ -25,7 +25,7 @@ already cost two sessions.
 - **Now**: the project runs **Avalonia 12.1.1**, where the caret half is fixed upstream. The
   custom IME client survives only to add **conversion-clause highlighting**, which no
   Avalonia release provides.
-- **Build/tests/smoke**: green — 221/221 tests, `--smoke` 27/27.
+- **Build/tests/smoke**: green — 220/220 tests, `--smoke` 27/27.
 - **The M2.5 IME gate PASSED 6/6 on 2026-08-24** (owner-run: MS-IME Japanese, ATOK, MS Pinyin,
   MS-IME Korean). M5+ is unblocked. Before changing anything under `Ime/`, read §5 below —
   every entry there is a bug that has already been shipped and diagnosed once.

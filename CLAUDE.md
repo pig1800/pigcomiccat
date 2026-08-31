@@ -7,12 +7,13 @@ Desktop CAT tool for comic/manga translation.
 >    built, what the verified build/test/smoke baseline is, and which task is next. The
 >    markdown docs are the authoritative record of project state — treat them, not your
 >    guesses and not leftover context, as the truth.
-> 2. **As of 2026-08-25: M5.1–M5.6 are CODE DONE** (editor shell, segment list, overlays,
->    confirm loop, TM/TB box, keys/save/autosave). M5.1's acceptance PASSED; the M5.2–M5.6
->    acceptances are manual and wait on the owner (a batch test is described in the PLAN
->    STATUS block). M0–M4 and the IME work are done and the M2.5 IME gate passed 6/6
->    (`docs/IME_REPORT.md`). Do not re-run finished milestones, and do not re-open the IME
->    stack — it is verified against MS-IME Japanese, ATOK, MS Pinyin and MS-IME Korean.
+> 2. **As of 2026-08-25: M0–M7 are CODE DONE and owner-cleared** ("all green"). M5.1's
+>    acceptance PASSED; the M5/M6/M7 batches were owner-tested through several fix rounds
+>    (D-52…D-61) and cleared; the only untested item is the M5.2–M5.6 IME session (§21
+>    items 1–4) which needs a real IME run. M0–M4 and the IME work are done and the M2.5
+>    IME gate passed 6/6 (`docs/IME_REPORT.md`). Do not re-run finished milestones, and do
+>    not re-open the IME stack — it is verified against MS-IME Japanese, ATOK, MS Pinyin
+>    and MS-IME Korean. **Next: M8**.
 > 3. Then read `docs/SPEC.md` — the single source of truth for behavior — before writing code.
 
 Work strictly from the task list in `docs/PLAN.md`, one task per session, in order, starting from the first task the STATUS block does **not** mark done. If the spec is silent on something you need, do NOT guess: add it to `docs/OPEN_QUESTIONS.md` and stop.
