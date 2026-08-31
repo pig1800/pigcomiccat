@@ -56,8 +56,15 @@ Work strictly from the task list in `docs/PLAN.md`, one task per session, in ord
   plus selection-mirrored `Kind`/`Notes`/`LlmComment` with write-through row setters).
   The character autocomplete is a `PartTextEditor` + suggestion `ListBox` — never
   Avalonia's `AutoCompleteBox` (its inner TextBox loses the IME stack). Master editor =
-  `CharacterMasterWindow` (ListBox of §6.3 rows; Ctrl+V via `IClipboard.TryGetBitmapAsync`).
-  Ctrl+Shift+K/C/N focus jumps route through `FunctionPaneView.FocusKind/Character/Notes`.
+  `CharacterMasterWindow` (ListBox of §6.3 rows; Ctrl+V via `IClipboard.TryGetBitmapAsync`;
+  images are PNG blobs in the SQLite `characters.db`, downscaled ≤256×256 on ingest).
+  `Kind` is a raw string (`Bubble.KindRaw`, D-59 — the 6 buttons highlight when it matches;
+  the inline "Custom…" textbox allows arbitrary values). Character info block (read-only
+  aligned form) sits between the TM/TB box and Kind. Ctrl+Shift+K/C/N focus jumps route
+  through `FunctionPaneView.FocusKind/Character/Notes`; Ctrl+Shift+M opens the master
+  editor. D-60: keyboard-driven focus puts the caret at 0 with nothing selected; Left/Right
+  at the boundary are swallowed (never leave the textbox); Up/Down at the line boundary
+  cross to the prev/next part or bubble.
 - **Crash lessons (already cost two sessions — do not regress)**:
   - `TiledImageControl.Install` must read a replaced bitmap's `PixelSize` **before** disposing
     it (Avalonia `Bitmap` throws `ObjectDisposedException` on post-dispose access).

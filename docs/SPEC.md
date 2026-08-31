@@ -59,7 +59,7 @@ pigcomic/                       (this repo)
 │  ├─ PigComic.Core/            domain, package I/O, TM/TB, QA, counting, export, journal — NO Avalonia references
 │  │  ├─ Domain/                enums, model classes
 │  │  ├─ Package/               .pcml read/write, validation, journal
-│  │  ├─ Project/               project.json, characters.json, registry
+│  │  ├─ Project/               project.json, characters.db (SQLite), registry
 │  │  ├─ Tm/  Tb/               engines + SQLite stores
 │  │  ├─ Exchange/              TMX, TBX, XLSX import/export for TM/TB
 │  │  ├─ Qa/                    mechanical QA, LLM QA orchestration
@@ -194,7 +194,7 @@ No XML namespace (DECISIONS D-02). Root element `<pcml>`. All text content uses 
 | `pcml/bubbles` | element | ✔ | May be empty. Writer emits bubbles sorted by `@order`; reader tolerates any order and sorts. |
 | `bubble/@id` | string | ✔ | Stable, unique within file. Generator emits deterministic IDs (`b0001`, `b0002`, … sequential across the whole chapter). The CAT **never renumbers**; CAT-created bubbles get `u` + 8 random lowercase hex chars, collision-checked (D-03). |
 | `bubble/@order` | int ≥1 | ✔ | Chapter-global reading order; unique within the file. |
-| `bubble/@kind` | enum | ✔ | `Speech` `Thought` `Narration` `Sfx` `Sign` `Note` (exact strings). |
+| `bubble/@kind` | string | ✔ | The 6 known values (`Speech` `Thought` `Narration` `Sfx` `Sign` `Note`) or an arbitrary user string (D-59). The 6 buttons highlight when the raw value matches; an inline "Custom…" textbox allows arbitrary values. |
 | `bubble/@character` | string | opt | Speaking character; attribute omitted when unset. Value need not exist in `characters` (validation warns, §5.7). |
 | `bubble/@status` | enum | ✔ | `Untranslated` `Draft` `Translated` `Reviewed` `Locked`. |
 | `bubble/marker` | element | ✔ (exactly 1) | Where the **source** text starts. |
@@ -334,8 +334,7 @@ A project = one manga title. Its folder (chosen/created at project creation) con
 ```
 MyManga/
 ├─ project.json
-├─ characters.json
-├─ characters/            pasted character images (PNG), file name = random 8-hex + .png
+├─ characters.db            master character list (SQLite, §6.3)
 ├─ tm.db
 └─ tb.db
 ```
@@ -371,26 +370,30 @@ MyManga/
 
 Chapter array order = display order. Unknown JSON properties are preserved on save (`JsonSerializerOptions` round-trip via `JsonNode`, not typed POCO serialization — D-07). Language pair is fixed at creation (matching a package with a different pair refuses to open into this project with a clear error).
 
-### 6.3 `characters.json` — master character list
+### 6.3 `characters.db` — master character list (SQLite)
 
-```json
-{
-  "schemaVersion": 1,
-  "characters": [
-    {
-      "name": "ピッグ",
-      "image": "characters/a3f09c12.png",
-      "gender": "male",
-      "age": "16",
-      "firstChapter": "001",
-      "pronoun": "オレ",
-      "comments": "主人公。語尾「〜だぜ」"
-    }
-  ]
-}
+The master list is a SQLite database (like `tm.db`/`tb.db`, WAL). Schema:
+
+```sql
+CREATE TABLE characters(
+  name          TEXT PRIMARY KEY,   -- the ORIGINAL name; @character references this
+  localized     TEXT NOT NULL DEFAULT '',
+  pronunciation TEXT NOT NULL DEFAULT '',
+  image         BLOB,               -- PNG bytes, ≤256×256 (downscaled on ingest, aspect-preserving)
+  gender        TEXT NOT NULL DEFAULT '',
+  age           TEXT NOT NULL DEFAULT '',
+  firstChapter  TEXT NOT NULL DEFAULT '',
+  pronoun       TEXT NOT NULL DEFAULT '',
+  comments      TEXT NOT NULL DEFAULT '',
+  created_utc   TEXT NOT NULL,
+  modified_utc  TEXT NOT NULL
+);
 ```
 
-`name` required and unique; everything else optional (`""`/absent). `image` is project-folder-relative. Clipboard paste: image saved as PNG into `characters/`.
+`name` (Original) is required and unique; everything else optional. The portrait is a PNG BLOB
+in the database (no `characters/` folder); clipboard paste and file import both downscale to
+≤256×256 preserving aspect ratio before storing. A missing/corrupt DB degrades gracefully
+(the character box works without autocomplete; the master editor opens an empty list).
 
 ### 6.4 Projects registry (main view backing)
 
@@ -703,7 +706,7 @@ Three vertical areas, left→right, with draggable splitters (widths persisted i
 Virtualized list, one row per bubble, in chapter-global reading order (`Order` ascending). There are no page group headers — the chapter is one continuous strip (D-49). Two columns:
 
 - **Source column** (read-mostly): first line shows `kind` glyph + character name (if set) in small text; below, the source text. `F2` (or double-click on the text) opens inline source-text editing (OCR fixes) — Enter commits, Esc cancels; source edits set no status change but mark dirty. Marker create/delete/move is driven from this column's selection interacting with the image pane (§15).
-- **Target column** (editable): the bubble's parts stacked vertically; each part is a text editor, text **center-aligned** (comic convention). Part editors: Enter = line break in the part (D-52); Ctrl+Enter = confirm bubble (§14.4); Tab/Shift+Tab = next/previous part (at the last/first part, Tab moves focus nowhere — beep). Row height grows with content.
+- **Target column** (editable): the bubble's parts stacked vertically; each part is a text editor, text **center-aligned** (comic convention). Part editors: Enter = line break in the part (D-52); Ctrl+Enter = confirm bubble (§14.4); Tab/Shift+Tab = next/previous part (at the last/first part, Tab moves focus nowhere — beep). Row height grows with content. **Focus rules (D-60)**: keyboard-driven focus (confirm advance, Tab, arrow-cross) puts the caret at position 0 with nothing selected — it never fights with a mouse click's caret placement. Left at caret 0 and Right at the end are swallowed (never leave the textbox); ArrowUp/Down at the first/last line cross to the previous/next textbox within the row, or to the prev/next bubble's nearest part.
 
 Row background reflects status color at low opacity. Locked bubbles: target read-only.
 
@@ -721,10 +724,11 @@ Row background reflects status color at low opacity. Locked bubbles: target read
 
 Top to bottom:
 1. **TM/TB results box** (§9), fills remaining height.
-2. **Kind** selector: 6 toggle buttons in a row (Speech/Thought/Narration/SFX/Sign/Note), keyboard accessible.
-3. **Character box**: a text field with autocomplete over the **master** character list; below it, one-click buttons for **every distinct character name used in the current chapter** (from the chapter `<characters>` list plus any `@character` values). Clicking a button sets the selected bubble's speaker. Typing a new name and pressing Enter: sets the speaker, adds the name to the chapter list, and shows a small inline prompt "Add 『X』 to master list?" [Add/Not now] (Add opens the master editor prefilled).
-4. **Notes**: multi-line text bound to `bubble.notes`.
-5. **LLM comment**: read-only display of `bubble.llmComment` with a clear button.
+2. **Character info block** (read-only, D-58): the selected bubble's master character shown as an aligned form (Original/Localized/Pronounced/Gender/Age/Chapter/Pronoun/Comments); blank when no speaker or no master match.
+3. **Kind** selector: 6 toggle buttons (Speech/Thought/Narration/SFX/Sign/Note) plus an inline "Custom…" textbox for arbitrary values (D-59); the 6 buttons highlight when the raw kind matches.
+4. **Character box**: a text field with autocomplete over the **master** character list; below it, one-click buttons for **every distinct character name used in the current chapter** (from the chapter `<characters>` list plus any `@character` values). Clicking a button sets the selected bubble's speaker. Typing a new name and pressing Enter: sets the speaker, adds the name to the chapter list, and shows a small inline prompt "Add 『X』 to master list?" [Add/Not now] (Add opens the master editor prefilled).
+5. **Notes**: multi-line text bound to `bubble.notes`.
+6. **LLM comment**: read-only display of `bubble.llmComment` with a clear button.
 6. **LLM QA button**: runs §13 for current selection/chapter (split-button).
 
 ### 14.6 Keyboard map (complete, Trados defaults where applicable)
@@ -754,6 +758,7 @@ Top to bottom:
 | `Ctrl+Shift+K` | editor | Focus kind selector |
 | `Ctrl+Shift+C` | editor | Focus character box |
 | `Ctrl+Shift+N` | editor | Focus notes |
+| `Ctrl+Shift+M` | editor | Open the master character editor (D-58) |
 | `PageUp` / `PageDown` | image pane focus | Scroll one viewport up / down |
 | `Home` / `End` | image pane focus | Jump to start / end of the chapter strip |
 | `Ctrl++` / `Ctrl+-` / `Ctrl+0` | image pane | Zoom in / out / fit width |
@@ -814,9 +819,9 @@ the list stays put.
 
 ## 16. Character features
 
-- **Master list editor** (window, reachable from project view and character box): grid of §6.3 fields; image cell supports **Ctrl+V paste from clipboard** (saved as PNG per §6.3) and file picker; delete row with confirm. Name uniqueness enforced.
-- **Chapter list**: `<characters>` in content.xml; maintained automatically (adding a speaker adds the name; names are never auto-removed).
-- Autocomplete field: prefix + substring matching over master names, ordered prefix-first; Enter selects the highlighted candidate or commits the literal text as a new name (§14.5).
+- **Master list editor** (window, reachable from project view, character box and Ctrl+Shift+M): grid of §6.3 rows (Original/Localized/Pronunciation + image + gender/age/chapter/pronoun/comments); image cell supports **Ctrl+V paste from clipboard** (stored as a PNG BLOB, downscaled to ≤256×256 preserving aspect ratio, per §6.3) and file picker; delete row with confirm. Name uniqueness enforced. Tab cycles fields within a row.
+- **Chapter list**: `<characters>` in content.xml; maintained automatically (adding a speaker adds the name; names are never auto-removed). Right-click a chapter-name button → "Remove from chapter list" (for a mistyped name).
+- Autocomplete field: prefix + substring matching over master names, ordered prefix-first; Enter selects the highlighted candidate or commits the literal text as a new name (§14.5). The chapter-name buttons auto-highlight the selected bubble's speaker (ToggleButton, D-58).
 
 ---
 
