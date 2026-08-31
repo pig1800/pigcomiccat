@@ -19,13 +19,19 @@
                     <Border Background="{Binding Tint}" Padding="6,4">
                         <Grid ColumnDefinitions="*,1.2*" Margin="0,2">
                             <StackPanel Grid.Column="0" Margin="0,0,8,0">
-                                <TextBlock FontSize="11" Foreground="#99000000">
-                                    <Run Text="{Binding KindText}"/>
-                                    <Run Text="·"/>
-                                    <Run Text="{Binding CharacterText}"/>
-                                    <Run Text="·"/>
-                                    <Run Text="{Binding Status}"/>
-                                </TextBlock>
+                                <StackPanel Orientation="Horizontal" Spacing="6">
+                                    <TextBlock FontSize="11" Foreground="#99000000" VerticalAlignment="Center">
+                                        <Run Text="{Binding KindText}"/>
+                                        <Run Text="·"/>
+                                        <Run Text="{Binding CharacterText}"/>
+                                        <Run Text="·"/>
+                                        <Run Text="{Binding Status}"/>
+                                    </TextBlock>
+                                    <TextBlock Text="⚡" FontSize="12" FontWeight="Bold"
+                                               Foreground="#C06000" VerticalAlignment="Center"
+                                               ToolTip.Tip="{Binding QaTooltip}"
+                                               IsVisible="{Binding HasQaIssues}"/>
+                                </StackPanel>
                                 <TextBlock x:Name="SourceText" Text="{Binding SourceText}"
                                            TextWrapping="Wrap" FontSize="13" MaxLines="3"
                                            IsVisible="{Binding !IsEditingSource}"/>

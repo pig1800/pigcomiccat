@@ -29,6 +29,8 @@
                    Foreground="IndianRed" Margin="12,8" TextWrapping="Wrap"
                    IsVisible="{Binding HasLoadError}"/>
 
+        <views:QaPanelView x:Name="QaPanel" DockPanel.Dock="Bottom"/>
+
         <Grid x:Name="PaneGrid" ColumnDefinitions="Auto,6,*,6,Auto">
             <Border Grid.Column="0" Background="#1A000000">
                 <controls:TiledImageControl x:Name="ImagePane"/>

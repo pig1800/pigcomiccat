@@ -7,6 +7,7 @@ using PigComic.App.Services;
 using PigComic.App.ViewModels;
 using PigComic.Core.Package;
 using PigComic.Core.Project;
+using PigComic.Core.Qa;
 using PigComic.Core.Tb;
 using PigComic.Core.Tm;
 
@@ -29,6 +30,9 @@ public partial class EditorView : Window
     private TbStore? _tb;
     private string? _storeError;
     private ConfirmService? _confirm;
+    private QaEngine? _qaEngine;
+    private QaPanelViewModel? _qaPanel;
+    private ConfirmQa? _confirmQa;
     private MatchListViewModel? _matches;
     private FunctionPaneViewModel? _pane;
     private AutosaveTimer? _autosave;
@@ -128,7 +132,16 @@ public partial class EditorView : Window
             }
 
             OpenStores(session);
-            _confirm = new ConfirmService(session, _vm.Segments!, _tm)
+
+            _qaEngine = new QaEngine(LoadQaConfig(), _tb);
+            _qaPanel = new QaPanelViewModel();
+            _qaPanel.NavigateRequested += OnQaNavigate;
+            QaPanel.DataContext = _qaPanel;
+            _confirmQa = new ConfirmQa(_qaEngine, _qaPanel, session.Document.Model.SourceLanguage,
+                session.Document.Model.TargetLanguage);
+            _confirmQa.IssuesFound += (_, _) => RefreshQaMarkers();
+
+            _confirm = new ConfirmService(session, _vm.Segments!, _tm, _confirmQa)
             {
                 SkipConfirmed = _vm.SkipConfirmed,
             };
@@ -414,7 +427,75 @@ public partial class EditorView : Window
 
     private void OnSelectionMoved() => Dispatcher.UIThread.Post(SegmentList.FocusFirstPartOfSelected, DispatcherPriority.Background);
 
-    private void OnBubblesChanged() => RefreshOverlays();
+    /// <summary>QA config from the project's settings (SPEC §12/§6.2); falls back to defaults.</summary>
+    private QaConfig LoadQaConfig()
+    {
+        if (_projectFolder is not null)
+        {
+            try
+            {
+                var projectPath = Path.Combine(_projectFolder, "project.json");
+                if (File.Exists(projectPath))
+                {
+                    return QaConfig.FromProject(ProjectFile.Load(projectPath).Settings);
+                }
+            }
+            catch
+            {
+                // Malformed settings fall back to the §12 defaults.
+            }
+        }
+
+        return new QaConfig();
+    }
+
+    /// <summary>F8: run mechanical QA over the whole chapter and show the dock panel (SPEC §12).</summary>
+    internal void RunChapterQa()
+    {
+        if (_session is null || _qaEngine is null || _qaPanel is null)
+        {
+            return;
+        }
+
+        _qaPanel.RunChapterResult(_qaEngine.RunOnChapter(_session.Document.Model));
+        RefreshQaMarkers();
+    }
+
+    /// <summary>Pushes the panel's per-bubble issues into the current rows (⚡ icons, SPEC §12).</summary>
+    private void RefreshQaMarkers()
+    {
+        if (_qaPanel is null || _vm.Segments is not { } segments)
+        {
+            return;
+        }
+
+        foreach (var row in segments.Items.OfType<BubbleRowViewModel>())
+        {
+            row.SetQaIssues(_qaPanel.IssuesFor(row.Id));
+        }
+    }
+
+    /// <summary>Double-click a QA row: select the bubble, center the strip, focus its editor.</summary>
+    private void OnQaNavigate(string bubbleId)
+    {
+        if (_vm.Segments is not { } segments)
+        {
+            return;
+        }
+
+        segments.SelectBubbleId(bubbleId);
+        if (segments.SelectedBubble is { } row)
+        {
+            ImagePane.CenterOn(new Avalonia.Point(row.Bubble.Marker.X, row.Bubble.Marker.Y));
+            SegmentList.FocusFirstPartOfSelected();
+        }
+    }
+
+    private void OnBubblesChanged()
+    {
+        RefreshOverlays();
+        RefreshQaMarkers();
+    }
 
     private void OnRowStatusChanged()
     {
@@ -511,6 +592,11 @@ public partial class EditorView : Window
         else if (PigComic.App.KeyBindings.IsOpenMaster(e))
         {
             OnOpenMaster();
+            e.Handled = true;
+        }
+        else if (PigComic.App.KeyBindings.IsRunQa(e))
+        {
+            RunChapterQa();
             e.Handled = true;
         }
     }

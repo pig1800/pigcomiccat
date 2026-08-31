@@ -29,9 +29,10 @@ first task below that is not marked done.
 > rejected, not migrated (it never shipped). If you find a leftover mention of pages or
 > regions, the SPEC wins — fix the plan.
 
-Verified baseline at that commit: `dotnet build PigComic.sln` clean, **220/220 tests**,
-**`--smoke` 27/27**. If those numbers differ when you start, something regressed — find
-out what before touching anything else.
+Verified baseline at that commit: `dotnet build PigComic.sln` clean, **256/256 tests**,
+**`--smoke` 28/28** (M6–M8 checks incl. the M8.3 QA panel/row-marker check added 2026-08-31).
+If those numbers differ when you start, something regressed — find out what before touching
+anything else.
 
 **If you are an executing model:** begin at **M8.1 (counter port, SPEC §11)**. Do not re-run
 the finished milestones above, and do not re-open the IME work — the gate is closed and
@@ -358,10 +359,11 @@ Milestone order is risk-ordered and fixed. M2 was the gate for M5–M11; it reco
 - **Acceptance**: `VisualLengthTests` (§12.1 table) + `QaRuleTests` (positive+negative per rule; TERM/FORBID cases seeded via TbStore).
 - **Delivered 2026-08-31**: `VisualLength.Of(line, lang, tcy)` (ja digit-run collapse per §12.1; horizontal per code point). `QaEngine` with all 8 rules + side conditions exact per the §12 table: QA-EMPTY only when status ≥ Translated (and both empty-and-not cases), QA-SAME with `identicalExemptKinds` + NFKC-equal via `Normalizer` (target normalized with tgtLang, source with srcLang), QA-TERM (non-forbidden rows with `source_term≠""`; forgiven by ANY same-source_term row whose target term hits), QA-FORBID, QA-LINELEN with `tcyMaxDigitRun`, QA-LINECOUNT, QA-TRAILING, QA-BRACKET with the "close precedes open" negative-depth check. `RunOnProject` prefixes the chapter title. `QaConfig` carries §6.2 defaults, `FromProject(ProjectSettings)`. `QaIssue{RuleId, Severity, BubbleId, PartIndex?, Message}`. Baseline after: build clean, **256/256 tests** (was 233 — 23 new), smoke 27/27.
 
-### M8.3 QA panel + on-confirm QA
-- **Files**: `src/PigComic.App/Views/QaPanelView.axaml(.cs)` + VM; ConfirmService `IConfirmQa` real implementation; inline row markers.
+### M8.3 QA panel + on-confirm QA ✅ DONE 2026-08-31
+- **Files**: `src/PigComic.App/Views/QaPanelView.axaml(.cs)` + VM; `ViewModels/ConfirmQa.cs` (the real `IConfirmQa`); inline row markers in `BubbleRowViewModel` + `SegmentListView`; `KeyBindings.IsRunQa` (F8); editor wiring.
 - **Behavior**: SPEC §12 (F8 chapter run → dockable bottom panel, double-click navigate; ⚡ issues as icons on the row with tooltip; errors don't block confirm D-15).
 - **Acceptance** (manual): craft a chapter with one violation per rule (builder) → F8 lists them all; confirming a bubble with an over-long line shows the marker immediately.
+- **Delivered 2026-08-31**: `QaPanelView` (dock panel on the editor's bottom edge; severity glyph ✖/⚠, rule id, bubble+part, message; double-click navigates → select + center + focus; ✕ Close hides; shown by F8). `QaPanelViewModel` keeps the issue list + per-bubble lookup (survives row rebuilds via `RefreshQaMarkers` on `BubblesChanged`). `ConfirmQa` implements `IConfirmQa` with the ⚡ subset (`RunOnBubble`); issues append to the panel and light the row's ⚡ icon, never block (D-15). QA config comes from `project.json settings.qa` via `QaConfig.FromProject` (defaults on missing/malformed). Row ⚡ shows `[RuleId] message` in a tooltip. Smoke +1: F8 run fills the panel, over-length confirm marks the row (`pigcomic-smoke-qa`). Baseline after: build clean, **256/256 tests** (unchanged — App-side), smoke **28/28**.
 
 ### M8.4 Repetition offer
 - **Files**: `src/PigComic.Core/Qa/RepetitionFinder.cs`; `src/PigComic.App/Controls/RepetitionPopup.axaml(.cs)`.

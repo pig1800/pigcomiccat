@@ -4,6 +4,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using PigComic.App.Services;
 using PigComic.Core.Domain;
 using PigComic.Core.Package;
+using PigComic.Core.Qa;
 
 namespace PigComic.App.ViewModels;
 
@@ -246,6 +247,28 @@ public partial class BubbleRowViewModel : ObservableObject
     {
         OnPropertyChanged(nameof(KindText));
     }
+
+    // ---------------------------------------------------------------- M8.3: mechanical-QA row markers
+
+    /// <summary>⚡ issues found for this bubble (on-confirm or F8; SPEC §12).</summary>
+    [ObservableProperty]
+    private IReadOnlyList<QaIssue> _qaIssues = [];
+
+    public bool HasQaIssues { get; private set; }
+
+    public string QaTooltip { get; private set; } = "";
+
+    partial void OnQaIssuesChanged(IReadOnlyList<QaIssue> value)
+    {
+        HasQaIssues = value.Count > 0;
+        QaTooltip = string.Join("\n", value.Select(i => $"[{i.RuleId}] {i.Message}"));
+        OnPropertyChanged(nameof(HasQaIssues));
+        OnPropertyChanged(nameof(QaTooltip));
+    }
+
+    /// <summary>Sets the row's QA markers from the panel (no-op when unchanged).</summary>
+    public void SetQaIssues(IReadOnlyList<QaIssue> issues)
+        => QaIssues = issues;
 
     private void NotifyStatus()
     {

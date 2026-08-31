@@ -1,0 +1,35 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:PigComic.App.ViewModels"
+             x:Class="PigComic.App.Views.QaPanelView"
+             x:DataType="vm:QaPanelViewModel">
+    <Border IsVisible="{Binding IsVisible}" Background="#FFF8EE" BorderThickness="0,1,0,0"
+            BorderBrush="#33000000">
+        <DockPanel Margin="10,6">
+            <DockPanel DockPanel.Dock="Top" Margin="0,0,0,4">
+                <Button DockPanel.Dock="Right" Content="✕ Close" FontSize="11" Padding="6,1"
+                        Click="OnClose"/>
+                <TextBlock Text="{Binding SummaryLabel}" FontWeight="SemiBold" FontSize="12"
+                           VerticalAlignment="Center"/>
+            </DockPanel>
+            <ListBox ItemsSource="{Binding Rows}" MaxHeight="170" Background="Transparent"
+                     DoubleTapped="OnRowDoubleTapped">
+                <ListBox.ItemTemplate>
+                    <DataTemplate x:DataType="vm:QaPanelRow">
+                        <Grid ColumnDefinitions="22,90,110,*" Margin="0,1">
+                            <TextBlock Grid.Column="0" Text="{Binding Glyph}"
+                                       Foreground="{Binding GlyphBrush}" FontWeight="Bold"/>
+                            <TextBlock Grid.Column="1" Text="{Binding RuleId}" FontSize="11"
+                                       FontFamily="Consolas"/>
+                            <TextBlock Grid.Column="2" Text="{Binding BubbleLabel}" FontSize="11"
+                                       Foreground="#66000000"/>
+                            <TextBlock Grid.Column="3" Text="{Binding Message}" FontSize="12"
+                                       TextTrimming="CharacterEllipsis"
+                                       ToolTip.Tip="{Binding Message}"/>
+                        </Grid>
+                    </DataTemplate>
+                </ListBox.ItemTemplate>
+            </ListBox>
+        </DockPanel>
+    </Border>
+</UserControl>

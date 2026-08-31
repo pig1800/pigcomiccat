@@ -89,6 +89,10 @@ public static class KeyBindings
     public static bool IsOpenMaster(KeyEventArgs e)
         => e.Key == Key.M && e.KeyModifiers == (KeyModifiers.Control | KeyModifiers.Shift);
 
+    /// <summary>F8: run mechanical QA on the chapter (SPEC §12/§14.6).</summary>
+    public static bool IsRunQa(KeyEventArgs e)
+        => e.Key == Key.F8;
+
     /// <summary>Ctrl+1..Ctrl+9 → result number (or null).</summary>
     public static int? NthMatch(KeyEventArgs e)
     {

@@ -606,6 +606,71 @@ internal static class SmokeTest
             }
         });
 
+        // 9c2. M8.3 mechanical QA (SPEC §12): F8 fills the dockable bottom panel with the
+        //      chapter run; confirming a bubble with an over-long line marks that ROW with
+        //      the ⚡ icon immediately (and never blocks the confirm — D-15).
+        CheckDetail("M8.3 QA: F8 fills the panel, over-length confirm marks the row", () =>
+        {
+            var tmp = Path.Combine(Path.GetTempPath(), "pigcomic-smoke-qa", Guid.NewGuid().ToString("N"));
+            try
+            {
+                StripImageGenerator.Generate(tmp, 640, 1280);
+                var pcml = ExampleChapterBuilder.Build(
+                    tmp, 640, 1280,
+                    Path.Combine(tmp, "strip.jpg"), Path.Combine(tmp, "strip.png"));
+
+                var editor = new EditorView(pcml, tmp);
+                editor.Show();
+                var vm = editor.DataContext as ViewModels.EditorViewModel;
+                var deadline = Environment.TickCount64 + 8000;
+                while (Environment.TickCount64 < deadline)
+                {
+                    Thread.Sleep(20);
+                    Dispatcher.UIThread.RunJobs();
+                    if (vm?.Segments?.Items.Count > 0)
+                    {
+                        break;
+                    }
+                }
+
+                if (vm?.Segments is null || vm.Segments.Items.Count == 0)
+                {
+                    editor.Close();
+                    return "editor did not load the chapter";
+                }
+
+                // F8: chapter run replaces the list and shows the panel.
+                editor.RunChapterQa();
+                Dispatcher.UIThread.RunJobs();
+                var panel = editor.FindControl<Views.QaPanelView>("QaPanel");
+                var panelVm = panel?.DataContext as ViewModels.QaPanelViewModel;
+                var panelShown = panelVm is { IsVisible: true, Rows.Count: > 0 };
+
+                // Confirm with an over-long target: QA-LINELEN must land on the ROW.
+                var row = vm.Segments.Items.OfType<ViewModels.BubbleRowViewModel>().First();
+                vm.Segments.SelectBubbleId(row.Id);
+                Dispatcher.UIThread.RunJobs();
+                row.Parts[0].Text = "これはとても長いセリフですこれはとても長いセリフです";
+                Dispatcher.UIThread.RunJobs();
+                var segmentList = editor.FindControl<Views.SegmentListView>("SegmentList");
+                segmentList?.Confirm?.ConfirmAndMove(review: false, skipConfirmed: false);
+                Dispatcher.UIThread.RunJobs();
+                Dispatcher.UIThread.RunJobs();
+
+                var rowMarked = row.HasQaIssues && row.QaTooltip.Contains("QA-LINELEN");
+
+                editor.Close();
+                return panelShown && rowMarked
+                    ? null
+                    : $"QA plumbing wrong: panel shown={panelShown}, row ⚡={rowMarked}" +
+                      (panelVm is null ? " (panel VM missing)" : $" (panel rows={panelVm.Rows.Count})");
+            }
+            finally
+            {
+                try { Directory.Delete(tmp, recursive: true); } catch { /* best effort */ }
+            }
+        });
+
         // 9d. M6 marker interactions (SPEC §15): drag a source marker (commit on release,
         //     clamps to the strip, marks dirty), Ctrl+B placement creates a bubble with the
         //     id/order rules, Delete removes it, Alt+1/2/3 splits/merges parts and Tab walks
