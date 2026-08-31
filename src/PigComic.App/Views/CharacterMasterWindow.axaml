@@ -21,7 +21,7 @@
             <ListBox.ItemTemplate>
                 <DataTemplate x:DataType="vm:CharacterMasterRowViewModel">
                     <Border BorderBrush="#22000000" BorderThickness="0,0,0,1" Padding="4,6">
-                        <Grid ColumnDefinitions="150,144,64,64,64,64,*,32">
+                        <Grid ColumnDefinitions="150,144,Auto,Auto,Auto,Auto,*,32">
                             <StackPanel Grid.Column="0" Spacing="2" Margin="12,0,12,0">
                                 <TextBlock Text="Original" FontSize="11" Foreground="Gray"/>
                                 <controls:PartTextEditor Text="{Binding Name, Mode=TwoWay}" FontSize="13"/>
@@ -43,19 +43,19 @@
                             </StackPanel>
                             <StackPanel Grid.Column="2" Spacing="2" Margin="12,0,12,0">
                                 <TextBlock Text="Gender" FontSize="11" Foreground="Gray"/>
-                                <controls:PartTextEditor Text="{Binding Gender, Mode=TwoWay}" FontSize="13"/>
+                                <controls:PartTextEditor Text="{Binding Gender, Mode=TwoWay}" FontSize="13" Width="64"/>
                             </StackPanel>
                             <StackPanel Grid.Column="3" Spacing="2" Margin="12,0,12,0">
                                 <TextBlock Text="Age" FontSize="11" Foreground="Gray"/>
-                                <controls:PartTextEditor Text="{Binding Age, Mode=TwoWay}" FontSize="13"/>
+                                <controls:PartTextEditor Text="{Binding Age, Mode=TwoWay}" FontSize="13" Width="64"/>
                             </StackPanel>
                             <StackPanel Grid.Column="4" Spacing="2" Margin="12,0,12,0">
                                 <TextBlock Text="Chapter" FontSize="11" Foreground="Gray"/>
-                                <controls:PartTextEditor Text="{Binding FirstChapter, Mode=TwoWay}" FontSize="13"/>
+                                <controls:PartTextEditor Text="{Binding FirstChapter, Mode=TwoWay}" FontSize="13" Width="64"/>
                             </StackPanel>
                             <StackPanel Grid.Column="5" Spacing="2" Margin="12,0,12,0">
                                 <TextBlock Text="Pronoun" FontSize="11" Foreground="Gray"/>
-                                <controls:PartTextEditor Text="{Binding Pronoun, Mode=TwoWay}" FontSize="13"/>
+                                <controls:PartTextEditor Text="{Binding Pronoun, Mode=TwoWay}" FontSize="13" Width="64"/>
                             </StackPanel>
                             <StackPanel Grid.Column="6" Spacing="2" Margin="12,0,12,0">
                                 <TextBlock Text="Comments" FontSize="11" Foreground="Gray"/>
