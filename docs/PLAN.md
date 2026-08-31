@@ -352,10 +352,11 @@ Milestone order is risk-ordered and fixed. M2 was the gate for M5–M11; it reco
 - **Acceptance**: `CounterTests` — full §11.1 table.
 - **Delivered 2026-08-31**: `LanMangaCounter` (implements `ICounter.Count(text)` returning `CountResult(MemoQ, MSWord)`; the shared `Preprocess` applies the ASCII-run collapse `[!-~]+ → 一` then strips U+0020 only; MemoQ counts UTF-32 code points inside the ten CJK ideograph blocks, MSWord counts UTF-16 units minus U+2013/U+2014). All 10 §11.1 rows pass; tests also assert the MemoQ ≤ MSWord guarantee, the empty-text zero case and instance/static agreement. Baseline after: build clean, **233/233 tests** (was 220 — 13 new CounterTests), smoke 27/27.
 
-### M8.2 VisualLength + QA engine
-- **Files**: `src/PigComic.Core/Qa/VisualLength.cs`, `QaEngine.cs`, `QaIssue.cs`, `QaConfig.cs` (bound from ProjectSettings).
+### M8.2 VisualLength + QA engine ✅ DONE 2026-08-31
+- **Files**: `src/PigComic.Core/Qa/VisualLength.cs`, `QaEngine.cs`, `QaIssue.cs`, `QaConfig.cs`.
 - **Behavior**: SPEC §12 all rules incl. ⚡ subset entry point `RunOnBubble`, full `RunOnChapter`, `RunOnProject`; §12.1 TCY.
 - **Acceptance**: `VisualLengthTests` (§12.1 table) + `QaRuleTests` (positive+negative per rule; TERM/FORBID cases seeded via TbStore).
+- **Delivered 2026-08-31**: `VisualLength.Of(line, lang, tcy)` (ja digit-run collapse per §12.1; horizontal per code point). `QaEngine` with all 8 rules + side conditions exact per the §12 table: QA-EMPTY only when status ≥ Translated (and both empty-and-not cases), QA-SAME with `identicalExemptKinds` + NFKC-equal via `Normalizer` (target normalized with tgtLang, source with srcLang), QA-TERM (non-forbidden rows with `source_term≠""`; forgiven by ANY same-source_term row whose target term hits), QA-FORBID, QA-LINELEN with `tcyMaxDigitRun`, QA-LINECOUNT, QA-TRAILING, QA-BRACKET with the "close precedes open" negative-depth check. `RunOnProject` prefixes the chapter title. `QaConfig` carries §6.2 defaults, `FromProject(ProjectSettings)`. `QaIssue{RuleId, Severity, BubbleId, PartIndex?, Message}`. Baseline after: build clean, **256/256 tests** (was 233 — 23 new), smoke 27/27.
 
 ### M8.3 QA panel + on-confirm QA
 - **Files**: `src/PigComic.App/Views/QaPanelView.axaml(.cs)` + VM; ConfirmService `IConfirmQa` real implementation; inline row markers.
