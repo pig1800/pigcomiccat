@@ -32,9 +32,9 @@
                             </StackPanel>
                             <StackPanel Grid.Column="1" Spacing="2" Margin="8,0,8,0">
                                 <TextBlock Text="Image" FontSize="11" Foreground="Gray"/>
-                                <Border BorderBrush="#33000000" BorderThickness="1" Width="144" Height="108"
+                                <Border BorderBrush="#33000000" BorderThickness="1" Width="128" Height="108"
                                         Background="#14000000" HorizontalAlignment="Left">
-                                    <Image Source="{Binding ImagePreview}" Stretch="Uniform" MaxWidth="140" MaxHeight="104"/>
+                                    <Image Source="{Binding ImagePreview}" Stretch="Uniform" MaxWidth="124" MaxHeight="104"/>
                                 </Border>
                                 <StackPanel Orientation="Horizontal" Spacing="4">
                                     <Button Content="Paste" FontSize="11" Padding="6,1" Click="OnPasteClick"/>
